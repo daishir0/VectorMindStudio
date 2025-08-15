@@ -15,7 +15,7 @@ Key features:
 ## Installation
 
 ### Prerequisites
-- Python 3.11+ with conda environment
+- Python 3.11+
 - Node.js 18+ and npm
 - OpenAI API key
 - Git
@@ -30,7 +30,9 @@ Key features:
 
 2. **Set up Python environment**
    ```bash
-   conda activate 311
+   # Create and activate a Python virtual environment (recommended)
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
    ```
 
 3. **Configure backend**
@@ -55,22 +57,7 @@ Key features:
 
 ## Usage
 
-### Quick Start with Management Script
-```bash
-# Start all services (recommended)
-./vectormindstudio.sh start
-
-# Check system status
-./vectormindstudio.sh status
-
-# Stop all services
-./vectormindstudio.sh stop
-
-# Restart services
-./vectormindstudio.sh restart
-```
-
-### Manual Startup
+### Starting the System
 **Start ChromaDB (Terminal 1)**
 ```bash
 chroma run --host 0.0.0.0 --port 8011 --path ./chromadb_data
@@ -79,7 +66,8 @@ chroma run --host 0.0.0.0 --port 8011 --path ./chromadb_data
 **Start Backend API (Terminal 2)**
 ```bash
 cd backend
-conda activate 311
+# Activate your Python environment if using virtual environment
+# source venv/bin/activate  # On Windows: venv\Scripts\activate
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8010
 ```
 
@@ -148,9 +136,8 @@ VectorMindStudio/
 │   │   ├── services/         # API client services
 │   │   └── types/            # TypeScript type definitions
 │   └── package.json
-├── chromadb_data/             # Vector database storage
-├── logs/                      # System logs
-└── vectormindstudio.sh        # System management script
+├── chromadb_data/             # Vector database storage (created at runtime)
+└── logs/                      # System logs (created at runtime)
 ```
 
 ## Technology Stack
@@ -191,7 +178,7 @@ VectorMindStudioは、AIと人間の知見を融合した次世代の知識管�
 ## インストール方法
 
 ### 前提条件
-- Python 3.11+ （conda環境）
+- Python 3.11+
 - Node.js 18+ と npm
 - OpenAI APIキー
 - Git
@@ -206,7 +193,9 @@ VectorMindStudioは、AIと人間の知見を融合した次世代の知識管�
 
 2. **Python環境の設定**
    ```bash
-   conda activate 311
+   # Python仮想環境の作成・有効化（推奨）
+   python -m venv venv
+   source venv/bin/activate  # Windows: venv\Scripts\activate
    ```
 
 3. **バックエンドの設定**
@@ -231,22 +220,7 @@ VectorMindStudioは、AIと人間の知見を融合した次世代の知識管�
 
 ## 使い方
 
-### 管理スクリプトによるクイックスタート
-```bash
-# 全サービスの開始（推奨）
-./vectormindstudio.sh start
-
-# システム状態の確認
-./vectormindstudio.sh status
-
-# 全サービスの停止
-./vectormindstudio.sh stop
-
-# サービスの再起動
-./vectormindstudio.sh restart
-```
-
-### 手動起動
+### システムの起動
 **ChromaDBの起動（ターミナル1）**
 ```bash
 chroma run --host 0.0.0.0 --port 8011 --path ./chromadb_data
@@ -255,7 +229,8 @@ chroma run --host 0.0.0.0 --port 8011 --path ./chromadb_data
 **バックエンドAPIの起動（ターミナル2）**
 ```bash
 cd backend
-conda activate 311
+# Python仮想環境を有効化している場合
+# source venv/bin/activate  # Windows: venv\Scripts\activate
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8010
 ```
 
@@ -324,9 +299,8 @@ VectorMindStudio/
 │   │   ├── services/         # APIクライアントサービス
 │   │   └── types/            # TypeScript型定義
 │   └── package.json
-├── chromadb_data/             # ベクターデータベースストレージ
-├── logs/                      # システムログ
-└── vectormindstudio.sh        # システム管理スクリプト
+├── chromadb_data/             # ベクターデータベースストレージ（実行時作成）
+└── logs/                      # システムログ（実行時作成）
 ```
 
 ## 技術スタック
