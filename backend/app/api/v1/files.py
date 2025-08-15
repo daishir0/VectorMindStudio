@@ -81,6 +81,11 @@ async def list_files(
     session: AsyncSession = Depends(get_session)
 ):
     """アップロードされたファイルの一覧を取得（検索・フィルタリング機能付き）"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    logger.info(f"Files API called - page: {page}, search: {search}, tags: {tags}, sort_field: {sort_field}, sort_order: {sort_order}")
+    
     file_repo = FileRepository(session)
     offset = (page - 1) * limit
     
@@ -88,6 +93,8 @@ async def list_files(
     tag_list = []
     if tags:
         tag_list = [tag.strip() for tag in tags.split(",")]
+    
+    logger.info(f"Parsed tag_list: {tag_list}")
     
     files, total = await file_repo.get_files_by_user_with_filters(
         user_id=current_user.id, 
@@ -98,6 +105,8 @@ async def list_files(
         sort_field=sort_field,
         sort_order=sort_order
     )
+    
+    logger.info(f"Query results - total: {total}, files count: {len(files)}")
     
     response_data = PaginatedResponse(
         items=files,
@@ -267,10 +276,33 @@ async def bulk_update_tags(
             user_id=current_user.id
         )
         
+        # ChromaDBのメタデータも一括更新
+        vector_service = VectorService()
+        vector_update_errors = []
+        
+        for file_id in request.file_ids:
+            try:
+                # 各ファイルのベクター状態を確認してからメタデータ更新
+                file = await file_repo.get_by_id(file_id)
+                if file and file.vector_status == "completed":
+                    await vector_service.update_file_tags(file_id, request.tags)
+            except Exception as vector_error:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Failed to update vector metadata for file {file_id}: {vector_error}")
+                vector_update_errors.append(file_id)
+        
+        message = f"{updated_count}件のファイルのタグが更新されました"
+        if vector_update_errors:
+            message += f" ({len(vector_update_errors)}件のベクターメタデータ更新に失敗)"
+        
         return ApiResponse(
             success=True,
-            data={"updated_count": updated_count},
-            message=f"{updated_count}件のファイルのタグが更新されました"
+            data={
+                "updated_count": updated_count,
+                "vector_update_errors": vector_update_errors
+            },
+            message=message
         )
         
     except Exception as e:
@@ -301,6 +333,17 @@ async def update_file_tags(
         # タグを更新
         updated_file = await file_repo.update_tags(file_id, request.tags)
         
+        # ChromaDBのメタデータも更新
+        if updated_file.vector_status == "completed":
+            vector_service = VectorService()
+            try:
+                await vector_service.update_file_tags(file_id, request.tags)
+            except Exception as vector_error:
+                # ベクター更新に失敗した場合はログに記録するが、API呼び出しは成功とする
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Failed to update vector metadata for file {file_id}: {vector_error}")
+        
         file_response = FileListResponse(
             id=updated_file.id,
             filename=updated_file.filename,
@@ -316,6 +359,26 @@ async def update_file_tags(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Could not update tags: {e}"
+        )
+
+@router.get("/tags/all", response_model=ApiResponse[List[str]])
+async def get_all_user_tags(
+    current_user: User = Depends(get_current_active_user),
+    session: AsyncSession = Depends(get_session)
+):
+    """ユーザーのすべてのファイルから利用可能なタグを取得"""
+    try:
+        file_repo = FileRepository(session)
+        all_tags = await file_repo.get_all_user_tags(current_user.id)
+        
+        return ApiResponse(
+            success=True,
+            data=sorted(list(all_tags))
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Could not retrieve tags: {e}"
         )
 
 @router.post("/bulk-delete", response_model=ApiResponse[dict])

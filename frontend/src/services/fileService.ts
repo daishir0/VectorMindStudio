@@ -83,6 +83,11 @@ export class FileService {
     });
     return response;
   }
+
+  async getAllUserTags(): Promise<string[]> {
+    const response = await api.get<string[]>('/api/v1/files/tags/all');
+    return response;
+  }
 }
 
 export const fileService = new FileService();

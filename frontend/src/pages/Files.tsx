@@ -31,6 +31,14 @@ const FilesPage: React.FC = () => {
   const fetchFiles = async (page = 1) => {
     try {
       setLoading(true);
+      console.log('Fetching files with params:', {
+        page,
+        searchQuery: searchQuery || undefined,
+        selectedTags: selectedTags.length > 0 ? selectedTags : undefined,
+        sortField: sortField || undefined,
+        sortOrder
+      });
+      
       const response = await fileService.getFiles(
         page, 
         20, 
@@ -39,14 +47,9 @@ const FilesPage: React.FC = () => {
         sortField || undefined,
         sortOrder
       );
-      setFileResponse(response);
       
-      // 利用可能なタグを収集
-      const allTags = new Set<string>();
-      response.items.forEach(file => {
-        file.tags?.forEach(tag => allTags.add(tag));
-      });
-      setAvailableTags(Array.from(allTags).sort());
+      console.log('Files API response:', response);
+      setFileResponse(response);
       
     } catch (error) {
       toast.error('ファイルの取得に失敗しました。');
@@ -55,6 +58,27 @@ const FilesPage: React.FC = () => {
       setLoading(false);
     }
   };
+
+  const fetchAllUserTags = async () => {
+    try {
+      const allTags = await fileService.getAllUserTags();
+      setAvailableTags(allTags);
+    } catch (error) {
+      console.error('Failed to fetch all user tags:', error);
+      // エラーが発生した場合は現在表示中のファイルからタグを収集（フォールバック）
+      if (fileResponse) {
+        const fallbackTags = new Set<string>();
+        fileResponse.items.forEach(file => {
+          file.tags?.forEach(tag => fallbackTags.add(tag));
+        });
+        setAvailableTags(Array.from(fallbackTags).sort());
+      }
+    }
+  };
+
+  useEffect(() => {
+    fetchAllUserTags(); // 初回読み込み時に全ユーザータグを取得
+  }, []);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -80,13 +104,15 @@ const FilesPage: React.FC = () => {
   };
 
   const handleFileDeleted = () => {
-    // Refresh the files list after deletion
+    // Refresh the files list and tags after deletion
     fetchFiles(currentPage);
+    fetchAllUserTags();
   };
 
   const handleFileUpdated = () => {
-    // Refresh the files list after update
+    // Refresh the files list and tags after update
     fetchFiles(currentPage);
+    fetchAllUserTags();
   };
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -152,6 +178,7 @@ const FilesPage: React.FC = () => {
       setBulkTags([]);
       setBulkMode(false);
       fetchFiles(currentPage);
+      fetchAllUserTags(); // タグリストを更新
     } catch (error) {
       toast.error('一括タグ付けに失敗しました。');
       console.error('Failed to apply bulk tags:', error);
@@ -246,8 +273,9 @@ const FilesPage: React.FC = () => {
         }
       }
       
-      // Refresh file list
+      // Refresh file list and tags
       fetchFiles(currentPage);
+      fetchAllUserTags();
     } catch (error) {
       toast.error('ファイルの一括削除に失敗しました。');
       console.error('Failed to delete all files:', error);

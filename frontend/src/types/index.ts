@@ -322,3 +322,21 @@ export interface FileUploadResponse {
   status: string;
   created_at: string;
 }
+
+// Search Types
+export interface SearchQuery {
+  query: string;
+  limit?: number;
+  tags?: string[];
+}
+
+export interface SearchResult {
+  id: string;
+  document: string;
+  metadata: Record<string, any>;
+  distance: number;
+  relevance_score: number;
+  tags?: string[];
+  filename?: string;
+  upload_id?: string;
+}

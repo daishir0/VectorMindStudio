@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { RefreshCw, Database, FileText, Search, BarChart3, Eye } from 'lucide-react';
+import { RefreshCw, Database, FileText, Search, BarChart3, Eye, Tag } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../services/api';
 
@@ -13,6 +13,7 @@ interface VectorDocumentInfo {
   document_preview: string;
   distance?: number;
   relevance_score?: number;
+  tags?: string[];
 }
 
 interface VectorDBStats {
@@ -252,13 +253,28 @@ const VectorDBPage: React.FC = () => {
                     <div key={result.id} className="border border-gray-200 rounded-lg p-4">
                       <div className="flex justify-between items-start">
                         <div className="flex-1">
-                          <div className="flex items-center space-x-3">
+                          <div className="flex items-center space-x-3 flex-wrap">
                             <span className="text-sm font-medium text-gray-900">{result.filename}</span>
                             <span className="text-xs text-gray-500">チャンク {result.chunk_number + 1}</span>
                             {result.relevance_score && (
                               <span className={`px-2 py-1 text-xs rounded-full ${getRelevanceColor(result.relevance_score)}`}>
                                 関連度: {(result.relevance_score * 100).toFixed(1)}%
                               </span>
+                            )}
+                            {result.tags && result.tags.length > 0 && (
+                              <div className="flex items-center space-x-1">
+                                <Tag className="h-3 w-3 text-gray-400" />
+                                <div className="flex space-x-1">
+                                  {result.tags.map(tag => (
+                                    <span
+                                      key={tag}
+                                      className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800"
+                                    >
+                                      {tag}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
                             )}
                           </div>
                           <p className="mt-2 text-sm text-gray-600">{result.document_preview}</p>
@@ -302,6 +318,23 @@ const VectorDBPage: React.FC = () => {
                             <span className="text-xs font-medium text-gray-600">チャンク {doc.chunk_number + 1}</span>
                             <span className="text-xs text-gray-500">{doc.chunk_size} 文字</span>
                           </div>
+                          {doc.tags && doc.tags.length > 0 && (
+                            <div className="mb-2">
+                              <div className="flex items-center space-x-1">
+                                <Tag className="h-3 w-3 text-gray-400" />
+                                <div className="flex flex-wrap gap-1">
+                                  {doc.tags.map(tag => (
+                                    <span
+                                      key={tag}
+                                      className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800"
+                                    >
+                                      {tag}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          )}
                           <p className="text-sm text-gray-700 line-clamp-3">{doc.document_preview}</p>
                           <button
                             onClick={() => setSelectedDoc(doc)}
@@ -377,6 +410,22 @@ const VectorDBPage: React.FC = () => {
                       <div>
                         <label className="block text-sm font-medium text-gray-700">距離</label>
                         <p className="mt-1 text-sm text-gray-900">{selectedDoc.distance?.toFixed(4)}</p>
+                      </div>
+                    </div>
+                  )}
+                  {selectedDoc.tags && selectedDoc.tags.length > 0 && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">タグ</label>
+                      <div className="mt-1 flex flex-wrap gap-2">
+                        {selectedDoc.tags.map(tag => (
+                          <span
+                            key={tag}
+                            className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
+                          >
+                            <Tag className="h-3 w-3 mr-1" />
+                            {tag}
+                          </span>
+                        ))}
                       </div>
                     </div>
                   )}

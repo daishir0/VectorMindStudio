@@ -21,6 +21,7 @@ class VectorDocumentInfo(BaseModel):
     document_preview: str  # 最初の100文字程度
     distance: float = None
     relevance_score: float = None
+    tags: List[str] = []
 
 class VectorDBStats(BaseModel):
     total_documents: int
@@ -74,13 +75,18 @@ async def get_vectordb_stats(
             metadata = user_docs['metadatas'][i]
             document = user_docs['documents'][i] if i < len(user_docs['documents']) else ""
             
+            # タグを文字列からリストに変換
+            tags_str = metadata.get('tags', '')
+            tags_list = tags_str.split(',') if tags_str else []
+            
             doc_info = VectorDocumentInfo(
                 id=doc_id,
                 filename=metadata.get('filename', 'Unknown'),
                 upload_id=metadata.get('upload_id', ''),
                 chunk_number=metadata.get('chunk_number', 0),
                 chunk_size=metadata.get('chunk_size', 0),
-                document_preview=document[:150] + "..." if len(document) > 150 else document
+                document_preview=document[:150] + "..." if len(document) > 150 else document,
+                tags=tags_list
             )
             user_documents.append(doc_info)
         
@@ -126,6 +132,9 @@ async def search_preview(
         preview_results = []
         for result in results:
             metadata = result['metadata']
+            # VectorServiceで既にタグがリスト形式で返される
+            tags_list = result.get('tags', [])
+            
             doc_info = VectorDocumentInfo(
                 id=result['id'],
                 filename=metadata.get('filename', 'Unknown'),
@@ -134,7 +143,8 @@ async def search_preview(
                 chunk_size=metadata.get('chunk_size', 0),
                 document_preview=result['document'][:150] + "..." if len(result['document']) > 150 else result['document'],
                 distance=result['distance'],
-                relevance_score=result['relevance_score']
+                relevance_score=result['relevance_score'],
+                tags=tags_list
             )
             preview_results.append(doc_info)
         
