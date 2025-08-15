@@ -1,0 +1,55 @@
+CLAUDE.md
+vectormindstudio.sh
+.*.pid
+
+# Environment and configuration
+backend/.env
+.env
+
+# Database files
+backend/*.db
+backend/*.db.backup
+
+# Python cache
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Node.js
+frontend/node_modules/
+node_modules/
+frontend/dist/
+
+# Storage and data files
+backend/app/storage/
+chromadb_data/
+
+# Logs
+test/
+logs/
+*.log
+
+# Development and temporary files
+backend/login_response.json
+backend/test_files/
+backend/test_upload.md
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+
