@@ -81,11 +81,6 @@ async def list_files(
     session: AsyncSession = Depends(get_session)
 ):
     """アップロードされたファイルの一覧を取得（検索・フィルタリング機能付き）"""
-    import logging
-    logger = logging.getLogger(__name__)
-    
-    logger.info(f"Files API called - page: {page}, search: {search}, tags: {tags}, sort_field: {sort_field}, sort_order: {sort_order}")
-    
     file_repo = FileRepository(session)
     offset = (page - 1) * limit
     
@@ -93,8 +88,6 @@ async def list_files(
     tag_list = []
     if tags:
         tag_list = [tag.strip() for tag in tags.split(",")]
-    
-    logger.info(f"Parsed tag_list: {tag_list}")
     
     files, total = await file_repo.get_files_by_user_with_filters(
         user_id=current_user.id, 
@@ -105,8 +98,6 @@ async def list_files(
         sort_field=sort_field,
         sort_order=sort_order
     )
-    
-    logger.info(f"Query results - total: {total}, files count: {len(files)}")
     
     response_data = PaginatedResponse(
         items=files,

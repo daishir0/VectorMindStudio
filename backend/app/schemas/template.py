@@ -66,6 +66,7 @@ class TemplateListResponse(BaseModel):
 class TemplateUse(BaseModel):
     """テンプレート使用スキーマ"""
     variables: Dict[str, Any] = {}
+    tags: Optional[List[str]] = None  # 参照文書のタグフィルター
     
     @validator('variables')
     def validate_variables(cls, v):

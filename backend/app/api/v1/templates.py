@@ -10,6 +10,7 @@ from datetime import datetime
 from app.infrastructure.database.session import get_session
 from app.infrastructure.database.models import TemplateModel, UserModel
 from app.infrastructure.external.openai_client import openai_client
+from app.services.vector_service import VectorService
 from app.schemas.template import (
     TemplateCreate,
     TemplateUpdate,
@@ -364,13 +365,14 @@ async def use_template(
         )
     
     try:
-        # 1. コンテキスト検索
+        # 1. コンテキスト検索（タグフィルター適用）
         vector_service = VectorService()
         search_query = f"{template.requirements} {template.name}"
         search_results = await vector_service.search_similar(
             query=search_query,
             user_id=current_user.id,
-            limit=5
+            limit=5,
+            tags=usage_data.tags
         )
 
         # 2. プロンプト構築

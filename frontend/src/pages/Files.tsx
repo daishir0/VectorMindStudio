@@ -31,14 +31,6 @@ const FilesPage: React.FC = () => {
   const fetchFiles = async (page = 1) => {
     try {
       setLoading(true);
-      console.log('Fetching files with params:', {
-        page,
-        searchQuery: searchQuery || undefined,
-        selectedTags: selectedTags.length > 0 ? selectedTags : undefined,
-        sortField: sortField || undefined,
-        sortOrder
-      });
-      
       const response = await fileService.getFiles(
         page, 
         20, 
@@ -47,8 +39,6 @@ const FilesPage: React.FC = () => {
         sortField || undefined,
         sortOrder
       );
-      
-      console.log('Files API response:', response);
       setFileResponse(response);
       
     } catch (error) {

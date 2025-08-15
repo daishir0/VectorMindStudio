@@ -37,7 +37,8 @@ class ChatService:
         user_id: str, 
         message: str, 
         session_id: Optional[str] = None,
-        max_documents: int = 5
+        max_documents: int = 5,
+        tags: Optional[List[str]] = None
     ) -> ChatResponse:
         """チャットメッセージを処理してRAG応答を生成"""
         
@@ -52,11 +53,12 @@ class ChatService:
         )
 
         try:
-            # ベクター検索で関連文書を取得
+            # ベクター検索で関連文書を取得（タグフィルター適用）
             relevant_docs = await self.vector_service.search_similar_content(
                 query=message,
                 user_id=user_id,
-                limit=max_documents
+                limit=max_documents,
+                tags=tags
             )
             
             # 会話履歴を取得（コンテキスト用）

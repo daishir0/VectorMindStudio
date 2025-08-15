@@ -38,7 +38,8 @@ async def send_chat_message(
             user_id=current_user.id,
             message=request.message,
             session_id=request.session_id,
-            max_documents=request.max_documents or 5
+            max_documents=request.max_documents or 5,
+            tags=request.tags
         )
         
         return ApiResponse(

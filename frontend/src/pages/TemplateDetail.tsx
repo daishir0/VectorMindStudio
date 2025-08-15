@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Edit, Trash2, Play, Clock, User } from 'lucide-react';
+import { ArrowLeft, Edit, Trash2, Play, Clock, User, Tag, X } from 'lucide-react';
 import { api } from '../services/api';
 import { Template } from '../types';
+import { fileService } from '../services/fileService';
 
 const TemplateDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -10,11 +11,16 @@ const TemplateDetail: React.FC = () => {
   const [template, setTemplate] = useState<Template | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  
+  // タグフィルター関連
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [availableTags, setAvailableTags] = useState<string[]>([]);
 
   useEffect(() => {
     if (id) {
       fetchTemplate(id);
     }
+    loadAvailableTags();
   }, [id]);
 
   const fetchTemplate = async (templateId: string) => {
@@ -29,13 +35,37 @@ const TemplateDetail: React.FC = () => {
     }
   };
 
+  const loadAvailableTags = async () => {
+    try {
+      const allTags = await fileService.getAllUserTags();
+      setAvailableTags(allTags);
+    } catch (error) {
+      console.error('Failed to load available tags:', error);
+    }
+  };
+
+  // タグ選択・解除
+  const handleTagToggle = (tag: string) => {
+    setSelectedTags(prev => 
+      prev.includes(tag)
+        ? prev.filter(t => t !== tag)
+        : [...prev, tag]
+    );
+  };
+
+  // タグフィルターをクリア
+  const clearTagFilter = () => {
+    setSelectedTags([]);
+  };
+
   const handleUseTemplate = async () => {
     if (!template) return;
 
     try {
       setGenerating(true);
       const response = await api.post(`/api/v1/templates/${template.id}/use`, {
-        variables: {}
+        variables: {},
+        tags: selectedTags.length > 0 ? selectedTags : undefined
       });
       
       // 成功時はアウトプット一覧画面に遷移し、成功メッセージを表示
@@ -186,6 +216,65 @@ const TemplateDetail: React.FC = () => {
           <p className="text-sm text-gray-600 mb-6">
             このテンプレートを使用してAIコンテンツを生成します。
           </p>
+          
+          {/* タグフィルターエリア */}
+          {availableTags.length > 0 && (
+            <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+              <div className="text-left space-y-3">
+                <div className="flex items-center gap-2">
+                  <Tag className="h-4 w-4 text-gray-500" />
+                  <span className="text-sm font-medium text-gray-700">参照文書のタグフィルター:</span>
+                  {selectedTags.length > 0 && (
+                    <button
+                      onClick={clearTagFilter}
+                      className="text-xs text-gray-500 hover:text-gray-700 underline"
+                    >
+                      クリア
+                    </button>
+                  )}
+                </div>
+                
+                <div className="flex flex-wrap gap-2">
+                  {availableTags.map((tag) => (
+                    <button
+                      key={tag}
+                      onClick={() => handleTagToggle(tag)}
+                      className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                        selectedTags.includes(tag)
+                          ? 'bg-indigo-100 text-indigo-800 border-indigo-200'
+                          : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'
+                      }`}
+                    >
+                      {tag}
+                    </button>
+                  ))}
+                </div>
+
+                {selectedTags.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-600">選択中:</span>
+                    <div className="flex flex-wrap gap-1">
+                      {selectedTags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800"
+                        >
+                          {tag}
+                          <button
+                            onClick={() => handleTagToggle(tag)}
+                            className="ml-1 text-indigo-600 hover:text-indigo-800"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          
           <button
             onClick={handleUseTemplate}
             disabled={generating}

@@ -17,6 +17,7 @@ class ChatRequest(BaseModel):
     message: str
     session_id: Optional[str] = None
     max_documents: Optional[int] = 5  # 取得する関連文書の最大数
+    tags: Optional[List[str]] = None  # 参照文書のタグフィルター
 
 
 class ChatResponse(BaseModel):

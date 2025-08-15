@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Bot, User, FileText, Loader, Trash2 } from 'lucide-react';
+import { Send, Bot, User, FileText, Loader, Trash2, Tag, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { chatService, ChatMessage, ChatSession } from '../services/chatService';
+import { fileService } from '../services/fileService';
 
 
 const ChatPage: React.FC = () => {
@@ -12,6 +13,10 @@ const ChatPage: React.FC = () => {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [loadingSessions, setLoadingSessions] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  // タグフィルター関連
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [availableTags, setAvailableTags] = useState<string[]>([]);
 
   // メッセージエリアを最下部にスクロール
   const scrollToBottom = () => {
@@ -24,6 +29,7 @@ const ChatPage: React.FC = () => {
 
   useEffect(() => {
     loadChatSessions();
+    loadAvailableTags();
   }, []);
 
   const loadChatSessions = async () => {
@@ -36,6 +42,15 @@ const ChatPage: React.FC = () => {
       console.error('Failed to load chat sessions:', error);
     } finally {
       setLoadingSessions(false);
+    }
+  };
+
+  const loadAvailableTags = async () => {
+    try {
+      const allTags = await fileService.getAllUserTags();
+      setAvailableTags(allTags);
+    } catch (error) {
+      console.error('Failed to load available tags:', error);
     }
   };
 
@@ -57,6 +72,20 @@ const ChatPage: React.FC = () => {
     }
   };
 
+  // タグ選択・解除
+  const handleTagToggle = (tag: string) => {
+    setSelectedTags(prev => 
+      prev.includes(tag)
+        ? prev.filter(t => t !== tag)
+        : [...prev, tag]
+    );
+  };
+
+  // タグフィルターをクリア
+  const clearTagFilter = () => {
+    setSelectedTags([]);
+  };
+
   // メッセージを送信
   const handleSendMessage = async () => {
     if (!inputText.trim() || isLoading) return;
@@ -69,7 +98,8 @@ const ChatPage: React.FC = () => {
       const response = await chatService.sendMessage({
         message: messageText,
         session_id: currentSessionId || undefined,
-        max_documents: 5
+        max_documents: 5,
+        tags: selectedTags.length > 0 ? selectedTags : undefined
       });
 
       // 新しいセッションの場合、セッションIDを更新
@@ -289,6 +319,64 @@ const ChatPage: React.FC = () => {
           
           <div ref={messagesEndRef} />
         </div>
+
+        {/* タグフィルターエリア */}
+        {availableTags.length > 0 && (
+          <div className="bg-gray-50 border-t border-gray-200 p-4">
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Tag className="h-4 w-4 text-gray-500" />
+                <span className="text-sm font-medium text-gray-700">参照文書のタグフィルター:</span>
+                {selectedTags.length > 0 && (
+                  <button
+                    onClick={clearTagFilter}
+                    className="text-xs text-gray-500 hover:text-gray-700 underline"
+                  >
+                    クリア
+                  </button>
+                )}
+              </div>
+              
+              <div className="flex flex-wrap gap-2">
+                {availableTags.map((tag) => (
+                  <button
+                    key={tag}
+                    onClick={() => handleTagToggle(tag)}
+                    className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                      selectedTags.includes(tag)
+                        ? 'bg-indigo-100 text-indigo-800 border-indigo-200'
+                        : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'
+                    }`}
+                  >
+                    {tag}
+                  </button>
+                ))}
+              </div>
+
+              {selectedTags.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-600">選択中:</span>
+                  <div className="flex flex-wrap gap-1">
+                    {selectedTags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800"
+                      >
+                        {tag}
+                        <button
+                          onClick={() => handleTagToggle(tag)}
+                          className="ml-1 text-indigo-600 hover:text-indigo-800"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* 入力エリア */}
         <div className="bg-white border-t border-gray-200 p-4">

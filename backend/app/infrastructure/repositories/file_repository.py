@@ -134,13 +134,11 @@ class FileRepository:
         
         # タグでの検索（JSONフィールドでの検索）
         if tags:
-            logger.info(f"Applying tag filters: {tags}")
             for tag in tags:
                 # 日本語文字がUnicodeエスケープ形式で保存されているため、エンコードして検索
                 import json
                 # タグをJSONエンコードして、データベース内の形式に合わせる
                 encoded_tag = json.dumps(tag, ensure_ascii=True)[1:-1]  # クォートを除去
-                logger.info(f"Adding tag filter for: {tag} -> searching for: {encoded_tag}")
                 base_query = base_query.where(UploadModel.tags.contains(encoded_tag))
         
         # 総件数取得

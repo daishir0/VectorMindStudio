@@ -12,6 +12,7 @@ export interface ChatRequest {
   message: string;
   session_id?: string;
   max_documents?: number;
+  tags?: string[];
 }
 
 export interface ChatResponse {
