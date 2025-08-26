@@ -41,6 +41,8 @@ Key features:
    pip install -r requirements.txt
    cp .env.example .env
    # Edit .env file with your OpenAI API key and other settings
+   # IMPORTANT: Generate a secure SECRET_KEY for JWT tokens
+   python -c "import secrets; print('SECRET_KEY=' + secrets.token_urlsafe(32))" >> .env
    ```
 
 4. **Configure frontend**
@@ -149,6 +151,7 @@ VectorMindStudio/
 - **Authentication**: JWT-based authentication system
 
 ## Notes
+- **SECURITY**: Ensure your SECRET_KEY is properly configured in the `.env` file with a strong random value (32+ characters)
 - Ensure your OpenAI API key is properly configured in the `.env` file
 - The system automatically manages ChromaDB persistence across restarts
 - All uploaded files are processed and stored in the `backend/app/storage/` directory
