@@ -125,83 +125,83 @@ export const paperService = {
     });
     if (status) params.append('status', status);
     
-    const response = await apiClient.get(`/papers?${params}`);
+    const response = await apiClient.get(`/api/v1/papers?${params}`);
     return response.data.data;
   },
 
   async getPaper(paperId: string): Promise<Paper> {
-    const response = await apiClient.get(`/papers/${paperId}`);
+    const response = await apiClient.get(`/api/v1/papers/${paperId}`);
     return response.data.data;
   },
 
   async createPaper(data: CreatePaperRequest): Promise<Paper> {
-    const response = await apiClient.post('/papers', data);
+    const response = await apiClient.post('/api/v1/papers', data);
     return response.data.data;
   },
 
   async updatePaper(paperId: string, data: UpdatePaperRequest): Promise<Paper> {
-    const response = await apiClient.put(`/papers/${paperId}`, data);
+    const response = await apiClient.put(`/api/v1/papers/${paperId}`, data);
     return response.data.data;
   },
 
   async deletePaper(paperId: string): Promise<void> {
-    await apiClient.delete(`/papers/${paperId}`);
+    await apiClient.delete(`/api/v1/papers/${paperId}`);
   },
 
   // セクション管理
   async getSections(paperId: string): Promise<SectionOutline[]> {
-    const response = await apiClient.get(`/papers/${paperId}/sections`);
+    const response = await apiClient.get(`/api/v1/papers/${paperId}/sections`);
     return response.data.data;
   },
 
   async getSection(paperId: string, sectionId: string): Promise<PaperSection> {
-    const response = await apiClient.get(`/papers/${paperId}/sections/${sectionId}`);
+    const response = await apiClient.get(`/api/v1/papers/${paperId}/sections/${sectionId}`);
     return response.data.data;
   },
 
   async createSection(paperId: string, data: CreateSectionRequest): Promise<PaperSection> {
-    const response = await apiClient.post(`/papers/${paperId}/sections`, data);
+    const response = await apiClient.post(`/api/v1/papers/${paperId}/sections`, data);
     return response.data.data;
   },
 
   async updateSection(paperId: string, sectionId: string, data: UpdateSectionRequest): Promise<PaperSection> {
-    const response = await apiClient.put(`/papers/${paperId}/sections/${sectionId}`, data);
+    const response = await apiClient.put(`/api/v1/papers/${paperId}/sections/${sectionId}`, data);
     return response.data.data;
   },
 
   async deleteSection(paperId: string, sectionId: string): Promise<void> {
-    await apiClient.delete(`/papers/${paperId}/sections/${sectionId}`);
+    await apiClient.delete(`/api/v1/papers/${paperId}/sections/${sectionId}`);
   },
 
   async getSectionHistory(paperId: string, sectionId: string): Promise<any[]> {
-    const response = await apiClient.get(`/papers/${paperId}/sections/${sectionId}/history`);
+    const response = await apiClient.get(`/api/v1/papers/${paperId}/sections/${sectionId}/history`);
     return response.data.data;
   },
 
   // チャット・研究ディスカッション
   async getChatSessions(paperId: string): Promise<ChatSession[]> {
-    const response = await apiClient.get(`/papers/${paperId}/chat`);
+    const response = await apiClient.get(`/api/v1/papers/${paperId}/chat`);
     return response.data.data;
   },
 
   async createChatSession(paperId: string, data: CreateChatSessionRequest): Promise<ChatSession> {
-    const response = await apiClient.post(`/papers/${paperId}/chat`, data);
+    const response = await apiClient.post(`/api/v1/papers/${paperId}/chat`, data);
     return response.data.data;
   },
 
   async getChatMessages(paperId: string, sessionId: string): Promise<ChatMessage[]> {
-    const response = await apiClient.get(`/papers/${paperId}/chat/${sessionId}/messages`);
+    const response = await apiClient.get(`/api/v1/papers/${paperId}/chat/${sessionId}/messages`);
     return response.data.data;
   },
 
   async sendMessage(paperId: string, sessionId: string, data: SendMessageRequest): Promise<ChatResponse> {
-    const response = await apiClient.post(`/papers/${paperId}/chat/${sessionId}/messages`, data);
+    const response = await apiClient.post(`/api/v1/papers/${paperId}/chat/${sessionId}/messages`, data);
     return response.data.data;
   },
 
   // エージェント実行
   async executeAgent(paperId: string, agentName: string, task: string, parameters: Record<string, any> = {}): Promise<any> {
-    const response = await apiClient.post(`/papers/${paperId}/agents/${agentName}/execute`, {
+    const response = await apiClient.post(`/api/v1/papers/${paperId}/agents/${agentName}/execute`, {
       task,
       parameters,
     });
@@ -210,7 +210,7 @@ export const paperService = {
 
   // 文献検索
   async searchReferences(query?: string, keywords: string[] = [], tags: string[] = [], limit: number = 10): Promise<any> {
-    const response = await apiClient.post('/papers/search/references', {
+    const response = await apiClient.post('/api/v1/papers/search/references', {
       query,
       keywords,
       tags,
