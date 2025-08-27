@@ -23,6 +23,7 @@ from app.schemas.user import (
 from app.schemas.common import ApiResponse, MessageResponse
 from app.domain.entities.user import User, UserRole
 from app.api.deps.auth import get_current_active_user
+from app.services.demo_account_service import DemoAccountService
 
 import uuid
 from datetime import datetime
@@ -152,6 +153,41 @@ async def login(
         message="Login successful"
     )
 
+@router.get("/demo-credentials", response_model=ApiResponse[dict])
+async def get_demo_credentials(session: AsyncSession = Depends(get_session)):
+    """デモアカウントの認証情報を取得（フロントエンド用）"""
+    # 非同期セッションを同期セッションに変換（一時的）
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy import create_engine
+    from app.core.config import settings
+    
+    # 同期セッション作成
+    engine = create_engine(settings.DATABASE_URL.replace("sqlite+aiosqlite://", "sqlite:///"))
+    Session = sessionmaker(bind=engine)
+    sync_session = Session()
+    
+    try:
+        credentials = DemoAccountService.get_demo_credentials(sync_session)
+        if credentials:
+            username, email = credentials
+            return ApiResponse(
+                success=True,
+                data={
+                    "username": username,
+                    "email": email,
+                    "message": "デモアカウントを使用して、システムの機能をお試しいただけます"
+                },
+                message="Demo credentials available"
+            )
+        else:
+            return ApiResponse(
+                success=False,
+                data={},
+                message="Demo account not available"
+            )
+    finally:
+        sync_session.close()
+
 @router.post("/refresh", response_model=ApiResponse[dict])
 async def refresh_token(
     refresh_data: dict,
@@ -227,7 +263,13 @@ async def get_current_user_info(
         roles=current_user.roles,
         created_at=current_user.created_at,
         updated_at=current_user.updated_at,
-        last_login=current_user.last_login
+        last_login=current_user.last_login,
+        requires_password_change=DemoAccountService.requires_password_change(
+            type('MockUser', (), {
+                'username': current_user.username,
+                'is_verified': current_user.is_verified
+            })()
+        )
     )
     
     return ApiResponse(
@@ -313,6 +355,10 @@ async def change_password(
     # 新しいパスワードをハッシュ化して保存
     user_model.hashed_password = get_password_hash(password_data.new_password)
     user_model.updated_at = datetime.utcnow()
+    
+    # デモアカウントの場合はverified状態に変更
+    if DemoAccountService.is_demo_account(user_model.username):
+        user_model.is_verified = True
     
     await session.commit()
     

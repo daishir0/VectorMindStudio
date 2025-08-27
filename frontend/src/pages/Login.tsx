@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Eye, EyeOff, LogIn } from 'lucide-react';
+import { Eye, EyeOff, LogIn, Users } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { UserLogin } from '../types';
+import { authService } from '../services/authService';
 
 const Login: React.FC = () => {
   const [formData, setFormData] = useState<UserLogin>({
@@ -11,12 +12,32 @@ const Login: React.FC = () => {
   });
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [demoCredentials, setDemoCredentials] = useState<{username: string, message: string} | null>(null);
 
   const { login, isLoading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
   const from = location.state?.from?.pathname || '/';
+
+  // デモアカウント情報を取得
+  useEffect(() => {
+    const fetchDemoCredentials = async () => {
+      try {
+        const response = await authService.getDemoCredentials();
+        if (response.success) {
+          setDemoCredentials({
+            username: response.data.username,
+            message: response.data.message
+          });
+        }
+      } catch (error) {
+        console.warn('Demo credentials not available:', error);
+      }
+    };
+
+    fetchDemoCredentials();
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -192,20 +213,29 @@ const Login: React.FC = () => {
             </div>
           </div>
 
-          <div className="mt-6">
-            <button
-              type="button"
-              onClick={() => {
-                setFormData({
-                  username: 'demo@example.com',
-                  password: 'DemoPassword123!',
-                });
-              }}
-              className="w-full btn btn-secondary"
-            >
-              デモアカウントでログイン
-            </button>
-          </div>
+          {demoCredentials && (
+            <div className="mt-6">
+              <button
+                type="button"
+                onClick={() => {
+                  setFormData({
+                    username: demoCredentials.username,
+                    password: '', // パスワードは表示せず、ログから確認してもらう
+                  });
+                }}
+                className="w-full btn btn-secondary flex items-center justify-center"
+              >
+                <Users className="w-4 h-4 mr-2" />
+                デモアカウントでログイン
+              </button>
+              <p className="mt-2 text-xs text-gray-600 text-center">
+                {demoCredentials.message}
+              </p>
+              <p className="mt-1 text-xs text-amber-600 text-center">
+                パスワードはサーバー起動ログをご確認ください
+              </p>
+            </div>
+          )}
         </div>
 
         {/* フッター */}

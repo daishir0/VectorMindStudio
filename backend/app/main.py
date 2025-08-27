@@ -7,9 +7,10 @@ import logging
 from contextlib import asynccontextmanager
 
 from app.core.config import settings
-from app.infrastructure.database.session import create_tables
+from app.infrastructure.database.session import create_tables, get_db
 from app.infrastructure.external.chroma_client import chroma_client
 from app.infrastructure.files.storage import ensure_storage_dirs
+from app.services.demo_account_service import DemoAccountService
 
 
 # ロガー設定
@@ -37,6 +38,16 @@ async def lifespan(app: FastAPI):
         logger.info("ChromaDB connected")
     except Exception as e:
         logger.warning(f"ChromaDB connection failed: {e}")
+    
+    # セキュアデモアカウント生成（開発環境のみ）
+    try:
+        db = next(get_db())
+        username, password = DemoAccountService.create_or_update_demo_account(db)
+        if username and password:
+            logger.info("Demo account initialized successfully")
+        db.close()
+    except Exception as e:
+        logger.warning(f"Demo account initialization failed: {e}")
     
     yield
     

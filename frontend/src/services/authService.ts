@@ -47,6 +47,10 @@ export class AuthService {
     return await api.post('/api/v1/auth/verify-email', { token });
   }
 
+  async getDemoCredentials(): Promise<{success: boolean, data: {username: string, email: string, message: string}}> {
+    return await api.get('/api/v1/auth/demo-credentials');
+  }
+
   async resendVerificationEmail(): Promise<void> {
     return await api.post('/api/v1/auth/resend-verification');
   }
