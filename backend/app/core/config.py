@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     CHROMA_COLLECTION_NAME: str = "vectormind_embeddings"
     
     # セキュリティ設定
-    SECRET_KEY: str = "your-super-secret-key-change-this-in-production"
+    SECRET_KEY: str = Field(..., env="SECRET_KEY")  # 環境変数から必須で読み込み
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
@@ -73,6 +73,29 @@ class Settings(BaseSettings):
                 return json.loads(v)
             return v
         raise ValueError(v)
+    
+    @validator('SECRET_KEY')
+    def validate_secret_key(cls, v):
+        """SECRET_KEYのセキュリティ検証"""
+        dangerous_values = [
+            "your-super-secret-key-here",
+            "your-super-secret-key-change-this-in-production",
+            "secret",
+            "changeme",
+            "default"
+        ]
+        
+        if v.lower() in [val.lower() for val in dangerous_values]:
+            raise ValueError(
+                f"SECRET_KEYにデフォルト値が設定されています。"
+                f"強力なランダムキーを生成して設定してください。"
+                f"例: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
+            )
+        
+        if len(v) < 32:
+            raise ValueError("SECRET_KEYは最低32文字以上である必要があります")
+            
+        return v
     
     class Config:
         env_file = ".env"
