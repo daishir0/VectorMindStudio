@@ -87,6 +87,13 @@ After starting the system, access the web interface at:
 - API Documentation: http://localhost:8010/docs
 - ChromaDB: http://localhost:8011
 
+#### Demo Account
+For new users, the system automatically creates a demo account for easy onboarding:
+- **Username**: `demo`
+- **Password**: Check server startup logs for the generated secure password
+- **Features**: Secure random password generation on each startup with forced password change requirement
+- **Production**: Demo account feature is automatically disabled in production environments
+
 ### Core Features
 
 #### 1. File Upload & Processing
@@ -263,6 +270,13 @@ npm run dev
 - バックエンドAPI: http://localhost:8010
 - API文書: http://localhost:8010/docs
 - ChromaDB: http://localhost:8011
+
+#### デモアカウント
+新規ユーザーの方へ、システムが自動でデモアカウントを作成し、簡単にお試しいただけます：
+- **ユーザー名**: `demo`
+- **パスワード**: サーバー起動ログに表示される自動生成パスワードをご確認ください
+- **特徴**: 起動毎にセキュアなランダムパスワードを生成し、初回ログイン後のパスワード変更を必須としています
+- **本番環境**: 本番環境ではデモアカウント機能は自動的に無効化されます
 
 ### 主要機能
 

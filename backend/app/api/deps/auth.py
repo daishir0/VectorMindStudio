@@ -66,7 +66,7 @@ async def get_current_user(
         return user
         
     except Exception as e:
-        print(f"Authentication error: {e}")  # デバッグ用
+        logger.warning(f"Authentication error: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
