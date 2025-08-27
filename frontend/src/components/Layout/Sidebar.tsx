@@ -12,6 +12,7 @@ import {
   FileOutput,
   Database, // VectorDB用のアイコン
   MessageSquare, // Chat用のアイコン
+  PenTool, // Papers用のアイコン
 } from 'lucide-react';
 
 const navigation = [
@@ -54,6 +55,11 @@ const navigation = [
     name: 'アウトプット',
     href: '/outputs',
     icon: FileOutput,
+  },
+  {
+    name: '論文執筆',
+    href: '/papers',
+    icon: PenTool,
   },
 ];
 

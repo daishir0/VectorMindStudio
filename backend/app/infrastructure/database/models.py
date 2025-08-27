@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Text, Integer, Boolean, DateTime, JSON, ForeignKey
+from sqlalchemy import Column, String, Text, Integer, Boolean, DateTime, JSON, ForeignKey, Index, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -25,6 +25,9 @@ class UserModel(Base):
     # リレーション
     templates = relationship("TemplateModel", back_populates="user", cascade="all, delete-orphan")
     outputs = relationship("OutputModel", back_populates="user", cascade="all, delete-orphan")
+    research_papers = relationship("ResearchPaperModel", back_populates="user", cascade="all, delete-orphan")
+    paper_sections = relationship("PaperSectionModel", back_populates="user", cascade="all, delete-orphan")
+    paper_chat_sessions = relationship("PaperChatSessionModel", back_populates="user", cascade="all, delete-orphan")
 
 
 class TemplateModel(Base):
@@ -154,3 +157,102 @@ class ChatMessageModel(Base):
     
     # リレーション
     session = relationship("ChatSessionModel", back_populates="messages")
+
+
+class ResearchPaperModel(Base):
+    """研究論文テーブル"""
+    __tablename__ = "research_papers"
+    
+    id = Column(String, primary_key=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    title = Column(String(500), nullable=False)
+    description = Column(Text, nullable=True)
+    status = Column(String(20), default="draft", nullable=False, index=True)  # draft, in_progress, completed, published
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    
+    # リレーション
+    user = relationship("UserModel", back_populates="research_papers")
+    sections = relationship("PaperSectionModel", back_populates="paper", cascade="all, delete-orphan")
+    chat_sessions = relationship("PaperChatSessionModel", back_populates="paper", cascade="all, delete-orphan")
+
+
+class PaperSectionModel(Base):
+    """論文セクションテーブル"""
+    __tablename__ = "paper_sections"
+    
+    id = Column(String, primary_key=True)
+    paper_id = Column(String, ForeignKey("research_papers.id"), nullable=False, index=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    hierarchy_path = Column(String(50), nullable=False, index=True)  # 例: "001", "001.001", "001.001.002"
+    section_number = Column(String(20), nullable=False)  # 表示用: "1", "1.1", "1.1.2"
+    title = Column(String(300), nullable=False)
+    content = Column(Text, default='', nullable=False)
+    summary = Column(Text, default='', nullable=False)  # AI自動生成要約（150-250文字）
+    word_count = Column(Integer, default=0, nullable=False)
+    status = Column(String(20), default="draft", nullable=False, index=True)  # draft, writing, review, completed
+    is_deleted = Column(Boolean, default=False, nullable=False)  # 論理削除フラグ
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    
+    # リレーション
+    paper = relationship("ResearchPaperModel", back_populates="sections")
+    user = relationship("UserModel", back_populates="paper_sections")
+    history = relationship("PaperSectionHistoryModel", back_populates="section", cascade="all, delete-orphan")
+    
+    # 複合制約
+    __table_args__ = (
+        UniqueConstraint('paper_id', 'hierarchy_path', name='uq_paper_hierarchy'),
+        Index('idx_paper_sections_paper_hierarchy', 'paper_id', 'hierarchy_path'),
+    )
+
+
+class PaperSectionHistoryModel(Base):
+    """論文セクション履歴テーブル"""
+    __tablename__ = "paper_section_history"
+    
+    id = Column(String, primary_key=True)
+    section_id = Column(String, ForeignKey("paper_sections.id"), nullable=False, index=True)
+    title = Column(String(300), nullable=False)
+    content = Column(Text, nullable=False)
+    summary = Column(Text, nullable=False)
+    version_number = Column(Integer, nullable=False)
+    change_description = Column(String(500), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    
+    # リレーション
+    section = relationship("PaperSectionModel", back_populates="history")
+
+
+class PaperChatSessionModel(Base):
+    """論文研究ディスカッションセッションテーブル"""
+    __tablename__ = "paper_chat_sessions"
+    
+    id = Column(String, primary_key=True)
+    paper_id = Column(String, ForeignKey("research_papers.id"), nullable=False, index=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    title = Column(String(200), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    
+    # リレーション
+    paper = relationship("ResearchPaperModel", back_populates="chat_sessions")
+    user = relationship("UserModel", back_populates="paper_chat_sessions")
+    messages = relationship("PaperChatMessageModel", back_populates="session", cascade="all, delete-orphan")
+
+
+class PaperChatMessageModel(Base):
+    """論文研究ディスカッションメッセージテーブル"""
+    __tablename__ = "paper_chat_messages"
+    
+    id = Column(String, primary_key=True)
+    session_id = Column(String, ForeignKey("paper_chat_sessions.id"), nullable=False, index=True)
+    role = Column(String(20), nullable=False)  # 'user', 'assistant', 'agent'
+    content = Column(Text, nullable=False)
+    agent_name = Column(String(100), nullable=True)  # エージェント名（agent roleの場合）
+    todo_tasks = Column(JSON, default=list, nullable=False)  # TODOタスク情報
+    references = Column(JSON, default=list, nullable=False)  # 参照した文献やセクション
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    
+    # リレーション
+    session = relationship("PaperChatSessionModel", back_populates="messages")

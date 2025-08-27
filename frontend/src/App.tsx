@@ -21,6 +21,9 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Profile from './pages/Profile';
 import NotFound from './pages/NotFound';
+import Papers from './pages/Papers';
+import CreatePaper from './pages/CreatePaper';
+import PaperDetail from './pages/PaperDetail';
 
 import { AuthProvider } from './contexts/AuthContext';
 import { ProtectedRoute } from './components/Auth/ProtectedRoute';
@@ -63,6 +66,9 @@ function App() {
                   <Route path="/search" element={<SearchPage />} />
                   <Route path="/outputs" element={<OutputsPage />} />
                   <Route path="/outputs/:id" element={<OutputDetailPage />} />
+                  <Route path="/papers" element={<Papers />} />
+                  <Route path="/papers/create" element={<CreatePaper />} />
+                  <Route path="/papers/:id" element={<PaperDetail />} />
                   <Route path="/profile" element={<Profile />} />
                 </Route>
               </Route>

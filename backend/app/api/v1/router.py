@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1 import auth, templates, files, search, outputs, vectordb, chat
+from app.api.v1 import auth, templates, files, search, outputs, vectordb, chat, papers
 
 api_router = APIRouter()
 
@@ -24,3 +24,6 @@ api_router.include_router(vectordb.router, prefix="/vectordb", tags=["vectordb"]
 
 # チャット関連のエンドポイント
 api_router.include_router(chat.router, prefix="/chat", tags=["chat"])
+
+# 論文執筆関連のエンドポイント
+api_router.include_router(papers.router, prefix="/papers", tags=["papers"])
