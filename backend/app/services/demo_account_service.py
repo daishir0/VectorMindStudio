@@ -67,10 +67,11 @@ class DemoAccountService:
         demo_user = result.scalar_one_or_none()
         
         if demo_user:
-            # 既存アカウントのパスワード更新
+            # 既存アカウントのパスワードとロール更新
             demo_user.hashed_password = hashed_password
             demo_user.is_verified = False  # パスワード変更強制のためfalseに設定
-            logger.info(f"デモアカウント '{DemoAccountService.DEMO_USERNAME}' のパスワードを更新しました")
+            demo_user.roles = ["user"]  # ロールを正しく設定
+            logger.info(f"デモアカウント '{DemoAccountService.DEMO_USERNAME}' のパスワードとロールを更新しました")
         else:
             # 新規デモアカウント作成
             demo_user = UserModel(
@@ -81,7 +82,7 @@ class DemoAccountService:
                 hashed_password=hashed_password,
                 is_active=True,
                 is_verified=False,  # パスワード変更強制のためfalseに設定
-                roles=["user", "demo"]
+                roles=["user"]
             )
             db.add(demo_user)
             logger.info(f"新しいデモアカウント '{DemoAccountService.DEMO_USERNAME}' を作成しました")
