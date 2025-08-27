@@ -1,8 +1,8 @@
 """
 デモアカウント管理サービス
 
-セキュア初期化パターンで、毎回異なるランダムパスワードを生成し、
-初回ログイン時にパスワード変更を強制するデモアカウントを管理します。
+簡易デモ用に固定パスワード (demo/demo) でアクセス可能な
+デモアカウントを管理します。
 """
 import secrets
 import string
@@ -22,25 +22,10 @@ class DemoAccountService:
     """デモアカウント管理サービス"""
     
     DEMO_USERNAME = "demo"
+    DEMO_PASSWORD = "demo"  # 固定パスワード
     DEMO_EMAIL = "demo@vectormindstudio.local"
     DEMO_FULL_NAME = "Demo User"
     
-    @staticmethod
-    def generate_secure_password(length: int = 12) -> str:
-        """セキュアなランダムパスワード生成"""
-        # 大文字、小文字、数字、記号を含む
-        alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
-        password = ''.join(secrets.choice(alphabet) for _ in range(length))
-        
-        # 最低1つずつの文字種を保証
-        if not any(c.isupper() for c in password):
-            password = password[:-1] + secrets.choice(string.ascii_uppercase)
-        if not any(c.islower() for c in password):
-            password = password[:-2] + secrets.choice(string.ascii_lowercase) + password[-1:]
-        if not any(c.isdigit() for c in password):
-            password = password[:-3] + secrets.choice(string.digits) + password[-2:]
-            
-        return password
     
     @staticmethod
     async def create_or_update_demo_account(db: AsyncSession) -> Tuple[str, str]:
@@ -48,7 +33,7 @@ class DemoAccountService:
         デモアカウントを作成または更新
         
         Returns:
-            Tuple[str, str]: (username, new_password)
+            Tuple[str, str]: (username, password)
         """
         settings = get_settings()
         
@@ -57,9 +42,9 @@ class DemoAccountService:
             logger.warning("デモアカウント機能は本番環境では無効化されています")
             return None, None
         
-        # 新しいランダムパスワード生成
-        new_password = DemoAccountService.generate_secure_password()
-        hashed_password = get_password_hash(new_password)
+        # 固定パスワードを使用
+        password = DemoAccountService.DEMO_PASSWORD
+        hashed_password = get_password_hash(password)
         
         # 既存のデモアカウントを確認
         stmt = select(UserModel).where(UserModel.username == DemoAccountService.DEMO_USERNAME)
@@ -69,9 +54,9 @@ class DemoAccountService:
         if demo_user:
             # 既存アカウントのパスワードとロール更新
             demo_user.hashed_password = hashed_password
-            demo_user.is_verified = False  # パスワード変更強制のためfalseに設定
+            demo_user.is_verified = True  # パスワード変更不要
             demo_user.roles = ["user"]  # ロールを正しく設定
-            logger.info(f"デモアカウント '{DemoAccountService.DEMO_USERNAME}' のパスワードとロールを更新しました")
+            logger.info(f"デモアカウント '{DemoAccountService.DEMO_USERNAME}' を更新しました")
         else:
             # 新規デモアカウント作成
             demo_user = UserModel(
@@ -81,7 +66,7 @@ class DemoAccountService:
                 full_name=DemoAccountService.DEMO_FULL_NAME,
                 hashed_password=hashed_password,
                 is_active=True,
-                is_verified=False,  # パスワード変更強制のためfalseに設定
+                is_verified=True,  # パスワード変更不要
                 roles=["user"]
             )
             db.add(demo_user)
@@ -89,15 +74,14 @@ class DemoAccountService:
         
         await db.commit()
         
-        # セキュリティ情報をログ出力（起動時のみ）
-        logger.info("=" * 60)
+        # デモアカウント情報をログ出力
+        logger.info("=" * 50)
         logger.info("🎯 デモアカウント情報")
         logger.info(f"   ユーザー名: {DemoAccountService.DEMO_USERNAME}")
-        logger.info(f"   パスワード: {new_password}")
-        logger.info(f"   注意: 初回ログイン後にパスワード変更が必要です")
-        logger.info("=" * 60)
+        logger.info(f"   パスワード: {DemoAccountService.DEMO_PASSWORD}")
+        logger.info("=" * 50)
         
-        return DemoAccountService.DEMO_USERNAME, new_password
+        return DemoAccountService.DEMO_USERNAME, DemoAccountService.DEMO_PASSWORD
     
     @staticmethod
     async def get_demo_credentials(db: AsyncSession) -> Optional[Tuple[str, str]]:
@@ -121,7 +105,5 @@ class DemoAccountService:
     @staticmethod
     def requires_password_change(user: UserModel) -> bool:
         """パスワード変更が必要かどうかを判定"""
-        return (
-            DemoAccountService.is_demo_account(user.username) 
-            and not user.is_verified
-        )
+        # 固定パスワードを使用するため常にFalse
+        return False
