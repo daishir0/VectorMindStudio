@@ -7,7 +7,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from app.core.config import settings
-from app.infrastructure.database.session import create_tables, get_sync_db
+from app.infrastructure.database.session import create_tables, get_session
 from app.infrastructure.external.chroma_client import chroma_client
 from app.infrastructure.files.storage import ensure_storage_dirs
 from app.services.demo_account_service import DemoAccountService
@@ -41,12 +41,14 @@ async def lifespan(app: FastAPI):
     
     # セキュアデモアカウント生成（開発環境のみ）
     try:
-        gen = get_sync_db()
-        db = next(gen)
-        username, password = DemoAccountService.create_or_update_demo_account(db)
-        if username and password:
-            logger.info("Demo account initialized successfully")
-        gen.close()
+        db_gen = get_session()
+        db = await db_gen.__anext__()
+        try:
+            username, password = await DemoAccountService.create_or_update_demo_account(db)
+            if username and password:
+                logger.info("Demo account initialized successfully")
+        finally:
+            await db_gen.aclose()
     except Exception as e:
         logger.warning(f"Demo account initialization failed: {e}")
     

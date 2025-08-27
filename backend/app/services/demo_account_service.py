@@ -8,15 +8,14 @@ import secrets
 import string
 import logging
 from typing import Optional, Tuple
-from sqlalchemy.orm import Session
-from passlib.context import CryptContext
-
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from app.infrastructure.database.models import UserModel
 from app.core.config import get_settings
+from app.core.security import get_password_hash
 
 
 logger = logging.getLogger(__name__)
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 class DemoAccountService:
@@ -44,7 +43,7 @@ class DemoAccountService:
         return password
     
     @staticmethod
-    def create_or_update_demo_account(db: Session) -> Tuple[str, str]:
+    async def create_or_update_demo_account(db: AsyncSession) -> Tuple[str, str]:
         """
         デモアカウントを作成または更新
         
@@ -60,12 +59,12 @@ class DemoAccountService:
         
         # 新しいランダムパスワード生成
         new_password = DemoAccountService.generate_secure_password()
-        hashed_password = pwd_context.hash(new_password)
+        hashed_password = get_password_hash(new_password)
         
         # 既存のデモアカウントを確認
-        demo_user = db.query(UserModel).filter(
-            UserModel.username == DemoAccountService.DEMO_USERNAME
-        ).first()
+        stmt = select(UserModel).where(UserModel.username == DemoAccountService.DEMO_USERNAME)
+        result = await db.execute(stmt)
+        demo_user = result.scalar_one_or_none()
         
         if demo_user:
             # 既存アカウントのパスワード更新
@@ -87,7 +86,7 @@ class DemoAccountService:
             db.add(demo_user)
             logger.info(f"新しいデモアカウント '{DemoAccountService.DEMO_USERNAME}' を作成しました")
         
-        db.commit()
+        await db.commit()
         
         # セキュリティ情報をログ出力（起動時のみ）
         logger.info("=" * 60)
@@ -100,14 +99,14 @@ class DemoAccountService:
         return DemoAccountService.DEMO_USERNAME, new_password
     
     @staticmethod
-    def get_demo_credentials(db: Session) -> Optional[Tuple[str, str]]:
+    async def get_demo_credentials(db: AsyncSession) -> Optional[Tuple[str, str]]:
         """
         デモアカウントの認証情報を取得（フロントエンド用）
         注意: パスワードは返さず、存在確認のみ
         """
-        demo_user = db.query(UserModel).filter(
-            UserModel.username == DemoAccountService.DEMO_USERNAME
-        ).first()
+        stmt = select(UserModel).where(UserModel.username == DemoAccountService.DEMO_USERNAME)
+        result = await db.execute(stmt)
+        demo_user = result.scalar_one_or_none()
         
         if demo_user:
             return DemoAccountService.DEMO_USERNAME, DemoAccountService.DEMO_EMAIL

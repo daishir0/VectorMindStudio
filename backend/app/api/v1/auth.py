@@ -26,7 +26,10 @@ from app.api.deps.auth import get_current_active_user
 from app.services.demo_account_service import DemoAccountService
 
 import uuid
+import logging
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -111,6 +114,14 @@ async def login(
     )
     result = await session.execute(stmt)
     user = result.scalar_one_or_none()
+    
+    # デバッグログ追加
+    logger.info(f"Login attempt - Username: {user_credentials.username}")
+    logger.info(f"User found: {user is not None}")
+    if user:
+        logger.info(f"User ID: {user.id}, Active: {user.is_active}")
+        password_valid = verify_password(user_credentials.password, user.hashed_password)
+        logger.info(f"Password verification: {password_valid}")
     
     if not user or not verify_password(user_credentials.password, user.hashed_password):
         raise HTTPException(
