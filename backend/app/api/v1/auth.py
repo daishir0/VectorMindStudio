@@ -154,39 +154,25 @@ async def login(
     )
 
 @router.get("/demo-credentials", response_model=ApiResponse[dict])
-async def get_demo_credentials(session: AsyncSession = Depends(get_session)):
+async def get_demo_credentials():
     """デモアカウントの認証情報を取得（フロントエンド用）"""
-    # 非同期セッションを同期セッションに変換（一時的）
-    from sqlalchemy.orm import sessionmaker
-    from sqlalchemy import create_engine
-    from app.core.config import settings
-    
-    # 同期セッション作成
-    engine = create_engine(settings.DATABASE_URL.replace("sqlite+aiosqlite://", "sqlite:///"))
-    Session = sessionmaker(bind=engine)
-    sync_session = Session()
-    
-    try:
-        credentials = DemoAccountService.get_demo_credentials(sync_session)
-        if credentials:
-            username, email = credentials
-            return ApiResponse(
-                success=True,
-                data={
-                    "username": username,
-                    "email": email,
-                    "message": "デモアカウントを使用して、システムの機能をお試しいただけます"
-                },
-                message="Demo credentials available"
-            )
-        else:
-            return ApiResponse(
-                success=False,
-                data={},
-                message="Demo account not available"
-            )
-    finally:
-        sync_session.close()
+    # デモアカウントが有効かどうかをチェック（簡易版）
+    if DemoAccountService.DEMO_USERNAME:
+        return ApiResponse(
+            success=True,
+            data={
+                "username": DemoAccountService.DEMO_USERNAME,
+                "email": DemoAccountService.DEMO_EMAIL,
+                "message": "デモアカウントを使用して、システムの機能をお試しいただけます"
+            },
+            message="Demo credentials available"
+        )
+    else:
+        return ApiResponse(
+            success=False,
+            data={},
+            message="Demo account not available"
+        )
 
 @router.post("/refresh", response_model=ApiResponse[dict])
 async def refresh_token(
