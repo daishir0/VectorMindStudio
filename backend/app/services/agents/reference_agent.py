@@ -303,15 +303,22 @@ IEEE 形式の例:
 
 可能な限り正確なIEEE形式で引用を生成してください。情報が不足している場合は合理的な推定を行ってください。"""
             
-            enhanced_citation = await openai_client.chat_completion(
-                messages=[
-                    {"role": "system", "content": "あなたは学術引用の専門家です。"},
-                    {"role": "user", "content": prompt}
-                ],
-                model="gpt-4o-mini",
-                max_tokens=200,
-                temperature=0.3
+            full_prompt = f"{system_prompt}\n\n{user_prompt}"
+
+            
+            result = await openai_client.generate_text(
+
+            
+                prompt=full_prompt,
+
+            
+                model="gpt-4o-mini"
+
+            
             )
+
+            
+            enhanced_citation = result.get("content", "")
             
             # 生成された引用をクリーンアップ
             citation = enhanced_citation.strip()
@@ -431,15 +438,22 @@ IEEE 形式の例:
 
 各ポイントを簡潔にまとめてください。"""
             
-            key_points = await openai_client.chat_completion(
-                messages=[
-                    {"role": "system", "content": "あなたは学術文献分析の専門家です。"},
-                    {"role": "user", "content": extraction_prompt}
-                ],
-                model="gpt-4o-mini",
-                max_tokens=500,
-                temperature=0.3
+            full_prompt = f"{system_prompt}\n\n{user_prompt}"
+
+            
+            result = await openai_client.generate_text(
+
+            
+                prompt=full_prompt,
+
+            
+                model="gpt-4o-mini"
+
+            
             )
+
+            
+            key_points = result.get("content", "")
             
             return {
                 "key_points": key_points,

@@ -190,15 +190,22 @@ class ResearchDiscussionService:
 
 上記を分析してください。"""
             
-            analysis_result = await openai_client.chat_completion(
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                model="gpt-4o-mini",
-                max_tokens=400,
-                temperature=0.3
+            full_prompt = f"{system_prompt}\n\n{user_prompt}"
+
+            
+            result = await openai_client.generate_text(
+
+            
+                prompt=full_prompt,
+
+            
+                model="gpt-4o-mini"
+
+            
             )
+
+            
+            analysis_result = result.get("content", "")
             
             # JSONパース（エラーハンドリング付き）
             try:

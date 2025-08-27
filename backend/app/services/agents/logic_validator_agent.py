@@ -270,15 +270,22 @@ class LogicValidatorAgent(BaseAgent):
         try:
             analysis_prompt = self._create_flow_analysis_prompt(outline, summaries)
             
-            flow_analysis = await openai_client.chat_completion(
-                messages=[
-                    {"role": "system", "content": "あなたは学術論文の論理構造分析の専門家です。"},
-                    {"role": "user", "content": analysis_prompt}
-                ],
-                model="gpt-4o-mini",
-                max_tokens=800,
-                temperature=0.2
+            full_prompt = f"{system_prompt}\n\n{user_prompt}"
+
+            
+            result = await openai_client.generate_text(
+
+            
+                prompt=full_prompt,
+
+            
+                model="gpt-4o-mini"
+
+            
             )
+
+            
+            flow_analysis = result.get("content", "")
             
             # 分析結果をパース（簡易実装）
             if "論理的飛躍" in flow_analysis:

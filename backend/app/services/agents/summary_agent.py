@@ -237,15 +237,17 @@ class SummaryAgent(BaseAgent):
 上記を踏まえて、最適化された要約を生成してください。"""
             
             # OpenAI API呼び出し
-            optimized_summary = await openai_client.chat_completion(
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                model="gpt-4o-mini",
-                max_tokens=300,
-                temperature=0.3
+            full_prompt = f"{system_prompt}\n\n{user_prompt}"
+
+            result = await openai_client.generate_text(
+
+                prompt=full_prompt,
+
+                model="gpt-4o-mini"
+
             )
+
+            optimized_summary = result.get("content", "")
             
             # 最適化結果の評価
             quality_result = await self._evaluate_summary_quality({
@@ -309,15 +311,17 @@ class SummaryAgent(BaseAgent):
 上記の内容を{target_length}文字程度で要約してください。"""
         
         try:
-            summary = await openai_client.chat_completion(
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                model="gpt-4o-mini",
-                max_tokens=350,
-                temperature=0.3
+            full_prompt = f"{system_prompt}\n\n{user_prompt}"
+
+            result = await openai_client.generate_text(
+
+                prompt=full_prompt,
+
+                model="gpt-4o-mini"
+
             )
+
+            summary = result.get("content", "")
             
             return summary.strip()
             

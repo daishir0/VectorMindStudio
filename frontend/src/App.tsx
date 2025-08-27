@@ -24,6 +24,8 @@ import NotFound from './pages/NotFound';
 import Papers from './pages/Papers';
 import CreatePaper from './pages/CreatePaper';
 import PaperDetail from './pages/PaperDetail';
+import CreateChatSession from './pages/CreateChatSession';
+import ChatSession from './pages/ChatSession';
 
 import { AuthProvider } from './contexts/AuthContext';
 import { ProtectedRoute } from './components/Auth/ProtectedRoute';
@@ -69,6 +71,8 @@ function App() {
                   <Route path="/papers" element={<Papers />} />
                   <Route path="/papers/create" element={<CreatePaper />} />
                   <Route path="/papers/:id" element={<PaperDetail />} />
+                  <Route path="/papers/:id/chat/create" element={<CreateChatSession />} />
+                  <Route path="/papers/:id/chat/:sessionId" element={<ChatSession />} />
                   <Route path="/profile" element={<Profile />} />
                 </Route>
               </Route>
