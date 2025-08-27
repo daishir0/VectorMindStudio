@@ -54,6 +54,7 @@ const Papers: React.FC = () => {
   }
 
   if (error) {
+    console.error('Papers API Error:', error);
     return (
       <div className="min-h-screen bg-gray-50 p-6">
         <div className="max-w-7xl mx-auto">
@@ -61,6 +62,11 @@ const Papers: React.FC = () => {
             <div className="text-center">
               <p className="text-red-600">エラーが発生しました</p>
               <p className="mt-2 text-gray-600">論文データの読み込みに失敗しました</p>
+              {process.env.NODE_ENV === 'development' && (
+                <p className="mt-2 text-sm text-gray-500">
+                  詳細: {error instanceof Error ? error.message : String(error)}
+                </p>
+              )}
             </div>
           </div>
         </div>

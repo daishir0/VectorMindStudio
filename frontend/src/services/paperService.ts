@@ -119,29 +119,37 @@ export const paperService = {
     limit: number;
     has_more: boolean;
   }> {
-    const params = new URLSearchParams({
-      page: page.toString(),
-      limit: limit.toString(),
-    });
-    if (status) params.append('status', status);
-    
-    const response = await apiClient.get(`/api/v1/papers?${params}`);
-    return response.data.data;
+    try {
+      const params = new URLSearchParams({
+        page: page.toString(),
+        limit: limit.toString(),
+      });
+      if (status) params.append('status', status);
+      
+      console.log('Fetching papers with params:', params.toString());
+      const response = await apiClient.get(`/api/v1/papers?${params}`);
+      console.log('Papers API response:', response);
+      
+      return response;
+    } catch (error) {
+      console.error('Papers API Error:', error);
+      throw error;
+    }
   },
 
   async getPaper(paperId: string): Promise<Paper> {
     const response = await apiClient.get(`/api/v1/papers/${paperId}`);
-    return response.data.data;
+    return response;
   },
 
   async createPaper(data: CreatePaperRequest): Promise<Paper> {
     const response = await apiClient.post('/api/v1/papers', data);
-    return response.data.data;
+    return response;
   },
 
   async updatePaper(paperId: string, data: UpdatePaperRequest): Promise<Paper> {
     const response = await apiClient.put(`/api/v1/papers/${paperId}`, data);
-    return response.data.data;
+    return response;
   },
 
   async deletePaper(paperId: string): Promise<void> {
@@ -151,22 +159,22 @@ export const paperService = {
   // セクション管理
   async getSections(paperId: string): Promise<SectionOutline[]> {
     const response = await apiClient.get(`/api/v1/papers/${paperId}/sections`);
-    return response.data.data;
+    return response;
   },
 
   async getSection(paperId: string, sectionId: string): Promise<PaperSection> {
     const response = await apiClient.get(`/api/v1/papers/${paperId}/sections/${sectionId}`);
-    return response.data.data;
+    return response;
   },
 
   async createSection(paperId: string, data: CreateSectionRequest): Promise<PaperSection> {
     const response = await apiClient.post(`/api/v1/papers/${paperId}/sections`, data);
-    return response.data.data;
+    return response;
   },
 
   async updateSection(paperId: string, sectionId: string, data: UpdateSectionRequest): Promise<PaperSection> {
     const response = await apiClient.put(`/api/v1/papers/${paperId}/sections/${sectionId}`, data);
-    return response.data.data;
+    return response;
   },
 
   async deleteSection(paperId: string, sectionId: string): Promise<void> {
@@ -175,28 +183,28 @@ export const paperService = {
 
   async getSectionHistory(paperId: string, sectionId: string): Promise<any[]> {
     const response = await apiClient.get(`/api/v1/papers/${paperId}/sections/${sectionId}/history`);
-    return response.data.data;
+    return response;
   },
 
   // チャット・研究ディスカッション
   async getChatSessions(paperId: string): Promise<ChatSession[]> {
     const response = await apiClient.get(`/api/v1/papers/${paperId}/chat`);
-    return response.data.data;
+    return response;
   },
 
   async createChatSession(paperId: string, data: CreateChatSessionRequest): Promise<ChatSession> {
     const response = await apiClient.post(`/api/v1/papers/${paperId}/chat`, data);
-    return response.data.data;
+    return response;
   },
 
   async getChatMessages(paperId: string, sessionId: string): Promise<ChatMessage[]> {
     const response = await apiClient.get(`/api/v1/papers/${paperId}/chat/${sessionId}/messages`);
-    return response.data.data;
+    return response;
   },
 
   async sendMessage(paperId: string, sessionId: string, data: SendMessageRequest): Promise<ChatResponse> {
     const response = await apiClient.post(`/api/v1/papers/${paperId}/chat/${sessionId}/messages`, data);
-    return response.data.data;
+    return response;
   },
 
   // エージェント実行
@@ -205,7 +213,7 @@ export const paperService = {
       task,
       parameters,
     });
-    return response.data.data;
+    return response;
   },
 
   // 文献検索
@@ -216,6 +224,6 @@ export const paperService = {
       tags,
       limit,
     });
-    return response.data.data;
+    return response;
   },
 };
