@@ -4,6 +4,9 @@
 VectorMindStudio is a next-generation knowledge management and utilization platform that seamlessly integrates AI capabilities with human insights. Built with cutting-edge vector database technology and AI-powered content generation, it enables organizations to transform scattered information into actionable knowledge.
 
 Key features:
+- **AI-Powered Research Paper Writing** - Complete academic paper composition system with IMRAD structure support and multi-agent AI collaboration
+- **Multi-Agent AI System** - 5 specialized AI agents (Outline, Summary, Writer, LogicValidator, Reference) working in coordination for high-quality research output
+- **Research Discussion Interface** - Interactive chat sessions with AI research assistants for collaborative paper development and academic consultation
 - **AI-Powered Template Engine** - Create and execute intelligent content templates with context-aware AI generation
 - **Advanced Vector Search** - Semantic similarity search using OpenAI embeddings and ChromaDB
 - **Tag-Based Filtering System** - Advanced tag management for precise content filtering across search, chat, and template execution
@@ -88,45 +91,74 @@ After starting the system, access the web interface at:
 - ChromaDB: http://localhost:8011
 
 #### Demo Account
-For new users, the system automatically creates a demo account for easy onboarding:
+For new users, the system provides a simple demo account for immediate access:
 - **Username**: `demo`
-- **Password**: Check server startup logs for the generated secure password
-- **Features**: Secure random password generation on each startup with forced password change requirement
+- **Password**: `demo`
+- **Features**: Fixed demo credentials for easy testing and evaluation
 - **Production**: Demo account feature is automatically disabled in production environments
 
 ### Core Features
 
-#### 1. File Upload & Processing
+#### 1. Research Paper Writing System
+- **Academic Paper Composition** - Complete IMRAD (Introduction, Methods, Results, Analysis, Discussion) structure support
+- **Multi-Agent AI Collaboration** - 5 specialized AI agents working together:
+  - **OutlineAgent** - Hierarchical paper structure management and section organization
+  - **SummaryAgent** - Content summarization and abstract generation
+  - **WriterAgent** - High-quality academic content generation and writing assistance
+  - **LogicValidatorAgent** - Logical consistency verification and argument validation
+  - **ReferenceAgent** - Citation management and reference formatting (IEEE style)
+- **Research Discussion Sessions** - Interactive chat with AI research assistants for:
+  - Paper structure consultation and improvement
+  - Research methodology guidance
+  - Literature review assistance
+  - Argument validation and enhancement
+- **Hierarchical Section Management** - Automated section numbering and structural organization
+- **Real-time Collaboration** - Live editing and AI-assisted writing workflow
+
+#### 2. File Upload & Processing
 - Upload documents in various formats (PDF, Word, Text, etc.)
 - Automatic content extraction and vectorization
 - Tag assignment and management for uploaded files
 - Searchable knowledge base creation
 
-#### 2. Advanced Tag-Based Filtering
+#### 3. Advanced Tag-Based Filtering
 - **Smart Tag Management** - Assign multiple tags to uploaded files for precise categorization
 - **Cross-Platform Filtering** - Use tags to filter content across search, chat, and template execution
 - **Dynamic Tag Selection** - Real-time tag-based content filtering with visual tag selection interface
 - **Computational Efficiency** - Reduce vector search computation by pre-filtering documents with tags
 
-#### 3. Template Management
+#### 4. Template Management
 - Create custom content templates
 - AI-powered template execution with context awareness and tag filtering
 - Template library for reusable content patterns
 - Tag-filtered context retrieval for more relevant AI generation
 
-#### 4. Intelligent Chat
+#### 5. Intelligent Chat
 - Context-aware AI conversations with tag-filtered RAG (Retrieval-Augmented Generation)
 - Knowledge base integration for accurate responses
 - Real-time interaction with uploaded content using tag-based document filtering
 - Precise AI responses based on selected document categories
 
-#### 5. Vector Search
+#### 6. Vector Search
 - Semantic similarity search across all content
 - Tag-based pre-filtering for enhanced search precision
 - Advanced filtering and ranking capabilities
 - Multi-modal search support with tag categorization
 
 ### API Endpoints
+
+#### Research Paper APIs
+- `POST /api/v1/papers` - Create new research papers
+- `GET /api/v1/papers` - List research papers with filtering
+- `GET /api/v1/papers/{id}` - Retrieve paper details
+- `PUT /api/v1/papers/{id}` - Update paper information
+- `DELETE /api/v1/papers/{id}` - Delete research papers
+- `GET /api/v1/papers/{id}/sections` - List paper sections
+- `POST /api/v1/papers/{id}/sections` - Create new sections
+- `POST /api/v1/papers/{id}/chat` - Create research discussion sessions
+- `POST /api/v1/papers/{id}/chat/{session_id}/messages` - Send messages to AI research assistants
+
+#### Core APIs  
 - `POST /api/v1/files/upload` - Upload and process files
 - `GET /api/v1/files` - List uploaded files with tag filtering support
 - `GET /api/v1/files/tags/all` - Retrieve all available tags for filtering
@@ -190,6 +222,9 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 VectorMindStudioは、AIと人間の知見を融合した次世代の知識管理・活用プラットフォームです。最新のベクターデータベース技術とAI駆動のコンテンツ生成機能を組み合わせ、散在する情報を実用的な知識に変換することを可能にします。
 
 主な機能:
+- **AI論文執筆システム** - IMRAD構成サポートとマルチエージェントAI連携による完全学術論文作成システム
+- **マルチエージェントAIシステム** - 高品質研究成果のために連携する5つの専門AIエージェント（アウトライン・要約・執筆・論理検証・参考文献）
+- **研究ディスカッションインターフェース** - 協働論文開発と学術相談のためのAI研究アシスタントとのインタラクティブチャットセッション
 - **AI搭載テンプレートエンジン** - コンテキスト認識AI生成によるインテリジェントなコンテンツテンプレートの作成と実行
 - **高度なベクター検索** - OpenAI埋め込みとChromaDBを使用したセマンティック類似性検索
 - **タグベースフィルタリングシステム** - 検索、チャット、テンプレート実行全体での精密なコンテンツフィルタリングのための高度なタグ管理
@@ -272,10 +307,10 @@ npm run dev
 - ChromaDB: http://localhost:8011
 
 #### デモアカウント
-新規ユーザーの方へ、システムが自動でデモアカウントを作成し、簡単にお試しいただけます：
+新規ユーザーの方へ、すぐにアクセスできる簡単なデモアカウントを提供しています：
 - **ユーザー名**: `demo`
-- **パスワード**: サーバー起動ログに表示される自動生成パスワードをご確認ください
-- **特徴**: 起動毎にセキュアなランダムパスワードを生成し、初回ログイン後のパスワード変更を必須としています
+- **パスワード**: `demo`
+- **特徴**: 簡単なテスト・評価用の固定認証情報
 - **本番環境**: 本番環境ではデモアカウント機能は自動的に無効化されます
 
 ### 主要機能
