@@ -40,6 +40,7 @@ class UserResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     last_login: Optional[datetime] = None
+    requires_password_change: bool = False  # パスワード変更が必要かどうか
     
     class Config:
         from_attributes = True

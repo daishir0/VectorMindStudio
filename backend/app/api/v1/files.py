@@ -224,7 +224,7 @@ async def delete_file(
             await vector_service.delete_vectors_by_upload_id(file_id)
         except Exception as e:
             # ベクターデータの削除が失敗してもファイル削除は続行
-            print(f"Warning: Failed to delete vector data for file {file_id}: {e}")
+            logger.warning(f"Failed to delete vector data for file {file_id}: {e}")
         
         # ファイルシステムからファイルを削除
         if file.original_path:
@@ -412,7 +412,7 @@ async def bulk_delete_files(
                 await vector_service.delete_vectors_by_upload_id(file_id)
             except Exception as e:
                 # ベクターデータの削除が失敗してもファイル削除は続行
-                print(f"Warning: Failed to delete vector data for file {file_id}: {e}")
+                logger.warning(f"Failed to delete vector data for file {file_id}: {e}")
             
             # ファイルシステムからファイルを削除
             if file.original_path:

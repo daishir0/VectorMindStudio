@@ -27,6 +27,7 @@ export interface User {
   created_at: string;
   updated_at: string;
   last_login?: string;
+  requires_password_change: boolean; // パスワード変更が必要かどうか
 }
 
 export enum UserRole {

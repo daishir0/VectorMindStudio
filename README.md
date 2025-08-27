@@ -6,8 +6,9 @@ VectorMindStudio is a next-generation knowledge management and utilization platf
 Key features:
 - **AI-Powered Template Engine** - Create and execute intelligent content templates with context-aware AI generation
 - **Advanced Vector Search** - Semantic similarity search using OpenAI embeddings and ChromaDB
+- **Tag-Based Filtering System** - Advanced tag management for precise content filtering across search, chat, and template execution
 - **Intelligent File Processing** - Automated document conversion and vectorization with support for multiple formats
-- **Real-time Chat Interface** - Interactive AI assistant for knowledge exploration and content creation
+- **Real-time Chat Interface** - Interactive AI assistant for knowledge exploration and content creation with tag-filtered RAG
 - **Template Management System** - Design, organize, and reuse content templates for consistent output
 - **Collaborative Knowledge Base** - Team-based knowledge sharing and collaborative content creation
 - **RESTful API Architecture** - Full API access for integration with external systems
@@ -86,35 +87,54 @@ After starting the system, access the web interface at:
 - API Documentation: http://localhost:8010/docs
 - ChromaDB: http://localhost:8011
 
+#### Demo Account
+For new users, the system automatically creates a demo account for easy onboarding:
+- **Username**: `demo`
+- **Password**: Check server startup logs for the generated secure password
+- **Features**: Secure random password generation on each startup with forced password change requirement
+- **Production**: Demo account feature is automatically disabled in production environments
+
 ### Core Features
 
 #### 1. File Upload & Processing
 - Upload documents in various formats (PDF, Word, Text, etc.)
 - Automatic content extraction and vectorization
+- Tag assignment and management for uploaded files
 - Searchable knowledge base creation
 
-#### 2. Template Management
+#### 2. Advanced Tag-Based Filtering
+- **Smart Tag Management** - Assign multiple tags to uploaded files for precise categorization
+- **Cross-Platform Filtering** - Use tags to filter content across search, chat, and template execution
+- **Dynamic Tag Selection** - Real-time tag-based content filtering with visual tag selection interface
+- **Computational Efficiency** - Reduce vector search computation by pre-filtering documents with tags
+
+#### 3. Template Management
 - Create custom content templates
-- AI-powered template execution with context awareness
+- AI-powered template execution with context awareness and tag filtering
 - Template library for reusable content patterns
+- Tag-filtered context retrieval for more relevant AI generation
 
-#### 3. Intelligent Chat
-- Context-aware AI conversations
+#### 4. Intelligent Chat
+- Context-aware AI conversations with tag-filtered RAG (Retrieval-Augmented Generation)
 - Knowledge base integration for accurate responses
-- Real-time interaction with uploaded content
+- Real-time interaction with uploaded content using tag-based document filtering
+- Precise AI responses based on selected document categories
 
-#### 4. Vector Search
+#### 5. Vector Search
 - Semantic similarity search across all content
+- Tag-based pre-filtering for enhanced search precision
 - Advanced filtering and ranking capabilities
-- Multi-modal search support
+- Multi-modal search support with tag categorization
 
 ### API Endpoints
 - `POST /api/v1/files/upload` - Upload and process files
-- `GET /api/v1/files` - List uploaded files
+- `GET /api/v1/files` - List uploaded files with tag filtering support
+- `GET /api/v1/files/tags/all` - Retrieve all available tags for filtering
+- `PATCH /api/v1/files/{id}/tags` - Update file tags
 - `POST /api/v1/templates` - Create content templates
-- `POST /api/v1/templates/{id}/use` - Execute templates with AI
-- `POST /api/v1/chat/message` - Interactive chat with AI
-- `POST /api/v1/search` - Vector-based content search
+- `POST /api/v1/templates/{id}/use` - Execute templates with AI and tag filtering
+- `POST /api/v1/chat/message` - Interactive chat with AI and tag-based RAG
+- `POST /api/v1/search` - Vector-based content search with tag filtering
 - `GET /api/v1/outputs` - Retrieve generated content
 
 ## Project Structure
@@ -172,8 +192,9 @@ VectorMindStudioは、AIと人間の知見を融合した次世代の知識管�
 主な機能:
 - **AI搭載テンプレートエンジン** - コンテキスト認識AI生成によるインテリジェントなコンテンツテンプレートの作成と実行
 - **高度なベクター検索** - OpenAI埋め込みとChromaDBを使用したセマンティック類似性検索
+- **タグベースフィルタリングシステム** - 検索、チャット、テンプレート実行全体での精密なコンテンツフィルタリングのための高度なタグ管理
 - **インテリジェントファイル処理** - 複数フォーマット対応の自動文書変換・ベクトル化
-- **リアルタイムチャットインターフェース** - 知識探索とコンテンツ作成のためのインタラクティブAIアシスタント
+- **リアルタイムチャットインターフェース** - タグフィルタ付きRAGによる知識探索とコンテンツ作成のためのインタラクティブAIアシスタント
 - **テンプレート管理システム** - 一貫した出力のためのコンテンツテンプレートの設計・整理・再利用
 - **協働ナレッジベース** - チームベースの知識共有と協働コンテンツ作成
 - **RESTful API アーキテクチャ** - 外部システム統合のための完全API アクセス
@@ -249,6 +270,13 @@ npm run dev
 - バックエンドAPI: http://localhost:8010
 - API文書: http://localhost:8010/docs
 - ChromaDB: http://localhost:8011
+
+#### デモアカウント
+新規ユーザーの方へ、システムが自動でデモアカウントを作成し、簡単にお試しいただけます：
+- **ユーザー名**: `demo`
+- **パスワード**: サーバー起動ログに表示される自動生成パスワードをご確認ください
+- **特徴**: 起動毎にセキュアなランダムパスワードを生成し、初回ログイン後のパスワード変更を必須としています
+- **本番環境**: 本番環境ではデモアカウント機能は自動的に無効化されます
 
 ### 主要機能
 

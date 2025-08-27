@@ -47,6 +47,10 @@ export class AuthService {
     return await api.post('/api/v1/auth/verify-email', { token });
   }
 
+  async getDemoCredentials(): Promise<{success: boolean, data: {username: string, email: string, message: string}}> {
+    return await api.get<{success: boolean, data: {username: string, email: string, message: string}}>('/api/v1/auth/demo-credentials');
+  }
+
   async resendVerificationEmail(): Promise<void> {
     return await api.post('/api/v1/auth/resend-verification');
   }
@@ -100,7 +104,8 @@ export class AuthService {
   // 権限チェック
   async hasPermission(permission: string): Promise<boolean> {
     try {
-      return await api.get<boolean>(`/api/v1/auth/permissions/${permission}`);
+      const response = await api.get<boolean>(`/api/v1/auth/permissions/${permission}`);
+      return response;
     } catch (error) {
       return false;
     }
