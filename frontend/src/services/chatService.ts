@@ -1,4 +1,5 @@
 import { api } from './api';
+import { parseUTCDateTime } from '../utils/dateUtils';
 
 export interface ChatMessage {
   id: string;
@@ -42,12 +43,12 @@ export class ChatService {
   async sendMessage(request: ChatRequest): Promise<ChatResponse> {
     const response = await api.post<ChatResponse>('/api/v1/chat/message', request);
     
-    // Date文字列をDateオブジェクトに変換
+    // UTC時間をDateオブジェクトに変換
     return {
       ...response,
       message: {
         ...response.message,
-        timestamp: new Date(response.message.timestamp)
+        timestamp: parseUTCDateTime(response.message.timestamp)
       }
     };
   }
@@ -55,21 +56,21 @@ export class ChatService {
   async getSessions(): Promise<ChatSession[]> {
     const response = await api.get<ChatSessionListResponse>('/api/v1/chat/sessions');
     
-    // Date文字列をDateオブジェクトに変換
+    // UTC時間をDateオブジェクトに変換
     return response.sessions.map(session => ({
       ...session,
-      created_at: new Date(session.created_at),
-      updated_at: new Date(session.updated_at)
+      created_at: parseUTCDateTime(session.created_at),
+      updated_at: parseUTCDateTime(session.updated_at)
     }));
   }
 
   async getSessionHistory(sessionId: string): Promise<ChatMessage[]> {
     const response = await api.get<ChatHistoryResponse>(`/api/v1/chat/sessions/${sessionId}/history`);
     
-    // Date文字列をDateオブジェクトに変換
+    // UTC時間をDateオブジェクトに変換
     return response.messages.map(message => ({
       ...message,
-      timestamp: new Date(message.timestamp)
+      timestamp: parseUTCDateTime(message.timestamp)
     }));
   }
 

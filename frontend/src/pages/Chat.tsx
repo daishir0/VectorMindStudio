@@ -3,6 +3,7 @@ import { Send, Bot, User, FileText, Loader, Trash2, Tag, X } from 'lucide-react'
 import toast from 'react-hot-toast';
 import { chatService, ChatMessage, ChatSession } from '../services/chatService';
 import { fileService } from '../services/fileService';
+import { formatTimeWithTimezone } from '../utils/dateUtils';
 
 
 const ChatPage: React.FC = () => {
@@ -94,6 +95,15 @@ const ChatPage: React.FC = () => {
     setInputText('');
     setIsLoading(true);
 
+    // ユーザーメッセージを即座に表示
+    const userMessage: ChatMessage = {
+      id: `user_${Date.now()}`,
+      content: messageText,
+      role: 'user',
+      timestamp: new Date()
+    };
+    setMessages(prev => [...prev, userMessage]);
+
     try {
       const response = await chatService.sendMessage({
         message: messageText,
@@ -109,19 +119,14 @@ const ChatPage: React.FC = () => {
         await loadChatSessions();
       }
 
-      // メッセージを更新（ユーザーメッセージとAIレスポンス）
-      const userMessage: ChatMessage = {
-        id: `user_${Date.now()}`,
-        content: messageText,
-        role: 'user',
-        timestamp: new Date()
-      };
-
-      setMessages(prev => [...prev, userMessage, response.message]);
+      // AIレスポンスを追加
+      setMessages(prev => [...prev, response.message]);
       
     } catch (error) {
       toast.error('メッセージの送信に失敗しました。');
       console.error('Chat error:', error);
+      // エラー時はユーザーメッセージを削除
+      setMessages(prev => prev.filter(msg => msg.id !== userMessage.id));
     } finally {
       setIsLoading(false);
     }
@@ -158,10 +163,7 @@ const ChatPage: React.FC = () => {
 
   // メッセージのフォーマット
   const formatTimestamp = (timestamp: Date) => {
-    return timestamp.toLocaleTimeString('ja-JP', { 
-      hour: '2-digit', 
-      minute: '2-digit' 
-    });
+    return formatTimeWithTimezone(timestamp);
   };
 
   return (

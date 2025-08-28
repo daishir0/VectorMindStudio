@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { paperService, ChatMessage, ChatResponse } from '../services/paperService';
 import toast from 'react-hot-toast';
+import { formatDateWithTimezone } from '../utils/dateUtils';
 
 const ChatSession: React.FC = () => {
   const { id: paperId, sessionId } = useParams<{ id: string; sessionId: string }>();
@@ -36,7 +37,6 @@ const ChatSession: React.FC = () => {
     onSuccess: (data: ChatResponse) => {
       if (data.success) {
         queryClient.invalidateQueries({ queryKey: ['chat-messages', paperId, sessionId] });
-        setMessage('');
         toast.success('メッセージを送信しました');
       } else {
         toast.error('メッセージの送信に失敗しました');
@@ -54,8 +54,26 @@ const ChatSession: React.FC = () => {
     e.preventDefault();
     if (!message.trim() || sendMutation.isPending) return;
     
+    const messageText = message.trim();
+    
+    // ユーザーメッセージを即座に表示（楽観的更新）
+    const tempUserMessage: ChatMessage = {
+      id: `temp_user_${Date.now()}`,
+      content: messageText,
+      role: 'user',
+      created_at: new Date().toISOString(),
+      agent_name: undefined,
+      todo_tasks: [],
+      references: []
+    };
+
+    queryClient.setQueryData(['chat-messages', paperId, sessionId], (oldMessages: ChatMessage[]) => {
+      return oldMessages ? [...oldMessages, tempUserMessage] : [tempUserMessage];
+    });
+
+    setMessage('');
     setIsTyping(true);
-    sendMutation.mutate({ message: message.trim() });
+    sendMutation.mutate({ message: messageText });
   };
 
   const scrollToBottom = () => {
@@ -67,12 +85,7 @@ const ChatSession: React.FC = () => {
   }, [messages]);
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString('ja-JP', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    return formatDateWithTimezone(dateString);
   };
 
   const getStatusIcon = (status: string) => {
