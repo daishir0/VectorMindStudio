@@ -6,7 +6,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete, and_, or_, func
 from sqlalchemy.orm import selectinload
 import uuid
+import logging
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 from app.infrastructure.database.models import (
     ResearchPaperModel, PaperSectionModel, PaperSectionHistoryModel,
@@ -103,7 +106,7 @@ class PaperRepository:
     async def create_section(
         self,
         paper_id: str,
-        hierarchy_path: str,
+        position: int,
         section_number: str,
         title: str,
         user_id: Optional[str] = None,
@@ -122,7 +125,7 @@ class PaperRepository:
             id=str(uuid.uuid4()),
             paper_id=paper_id,
             user_id=user_id,
-            hierarchy_path=hierarchy_path,
+            position=position,
             section_number=section_number,
             title=title,
             content=content,
@@ -148,7 +151,7 @@ class PaperRepository:
         return result.scalar_one_or_none()
     
     async def get_sections_by_paper(self, paper_id: str) -> List[PaperSectionModel]:
-        """論文のセクション一覧を階層順で取得"""
+        """論文のセクション一覧を位置順で取得"""
         stmt = (
             select(PaperSectionModel)
             .where(
@@ -157,74 +160,25 @@ class PaperRepository:
                     PaperSectionModel.is_deleted == False
                 )
             )
-            .order_by(PaperSectionModel.hierarchy_path)
+            .order_by(PaperSectionModel.position)
         )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
     
-    async def get_child_sections(self, parent_section_id: str) -> List[PaperSectionModel]:
-        """子セクション一覧を取得"""
-        parent = await self.get_section_by_id(parent_section_id)
-        if not parent:
-            return []
-        
-        # 親の階層パス + "." で始まる子セクションを検索
-        parent_path = parent.hierarchy_path
+    async def get_next_position(self, paper_id: str) -> int:
+        """論文内で次に使用する位置番号を取得"""
         stmt = (
-            select(PaperSectionModel)
-            .where(
-                and_(
-                    PaperSectionModel.paper_id == parent.paper_id,
-                    PaperSectionModel.hierarchy_path.like(f"{parent_path}.%"),
-                    PaperSectionModel.is_deleted == False
-                )
-            )
-            .order_by(PaperSectionModel.hierarchy_path)
-        )
-        result = await self.session.execute(stmt)
-        return list(result.scalars().all())
-    
-    async def get_child_sections_by_path(
-        self, 
-        paper_id: str, 
-        parent_path: str
-    ) -> List[PaperSectionModel]:
-        """階層パスによる直下の子セクション取得"""
-        # 親パス + "." + 3桁数字 の形式の直下子セクションのみ取得
-        import re
-        pattern = f"{parent_path}\\.\\d{{3}}$"
-        
-        stmt = (
-            select(PaperSectionModel)
+            select(func.max(PaperSectionModel.position))
             .where(
                 and_(
                     PaperSectionModel.paper_id == paper_id,
-                    PaperSectionModel.hierarchy_path.regexp_match(pattern),
                     PaperSectionModel.is_deleted == False
                 )
             )
-            .order_by(PaperSectionModel.hierarchy_path)
         )
         result = await self.session.execute(stmt)
-        return list(result.scalars().all())
-    
-    async def get_root_sections(self, paper_id: str) -> List[PaperSectionModel]:
-        """ルートレベルセクション取得"""
-        import re
-        # "001", "002" のような3桁数字のみのパターン
-        stmt = (
-            select(PaperSectionModel)
-            .where(
-                and_(
-                    PaperSectionModel.paper_id == paper_id,
-                    PaperSectionModel.hierarchy_path.regexp_match(r"^\d{3}$"),
-                    PaperSectionModel.is_deleted == False
-                )
-            )
-            .order_by(PaperSectionModel.hierarchy_path)
-        )
-        result = await self.session.execute(stmt)
-        return list(result.scalars().all())
+        max_position = result.scalar()
+        return (max_position or 0) + 1
     
     async def update_section(
         self, 
@@ -384,3 +338,76 @@ class PaperRepository:
         )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+    
+    async def reorder_sections(self, paper_id: str, section_orders: List[Dict[str, Any]]) -> bool:
+        """
+        セクションの順序を一括で変更
+        section_orders: [{"section_id": "xxx", "new_position": 1}, ...]
+        """
+        try:
+            # ステップ1: 一時的なpositionに変更してUNIQUE制約を回避
+            for i, order in enumerate(section_orders):
+                temp_position = 1000 + i  # 十分に大きな値でUNIQUE制約を回避
+                stmt = (
+                    update(PaperSectionModel)
+                    .where(PaperSectionModel.id == order["section_id"])
+                    .values(
+                        position=temp_position,
+                        updated_at=datetime.utcnow()
+                    )
+                )
+                await self.session.execute(stmt)
+            
+            # ステップ2: 正しいpositionに更新（section_numberは保持）
+            for order in section_orders:
+                stmt = (
+                    update(PaperSectionModel)
+                    .where(PaperSectionModel.id == order["section_id"])
+                    .values(
+                        position=order["new_position"],
+                        updated_at=datetime.utcnow()
+                    )
+                )
+                await self.session.execute(stmt)
+            
+            await self.session.commit()
+            return True
+        except Exception as e:
+            await self.session.rollback()
+            logger.error(f"セクション順序変更エラー: {e}")
+            return False
+    
+    async def move_section_to_position(self, section_id: str, new_position: int) -> bool:
+        """
+        指定セクションを新しい位置に移動
+        """
+        try:
+            # 対象セクションの取得
+            section = await self.get_section_by_id(section_id)
+            if not section:
+                return False
+            
+            # 同じ論文の全セクションを取得
+            sections = await self.get_sections_by_paper(section.paper_id)
+            if not sections or new_position < 1 or new_position > len(sections):
+                return False
+            
+            # 新しい並び順を計算
+            sections_list = list(sections)
+            current_section = next(s for s in sections_list if s.id == section_id)
+            sections_list.remove(current_section)
+            sections_list.insert(new_position - 1, current_section)
+            
+            # position値を再割り当て（section_numberは保持）
+            section_orders = []
+            for i, s in enumerate(sections_list, 1):
+                section_orders.append({
+                    "section_id": s.id,
+                    "new_position": i
+                })
+            
+            return await self.reorder_sections(section.paper_id, section_orders)
+        
+        except Exception as e:
+            logger.error(f"セクション移動エラー: {e}")
+            return False

@@ -15,13 +15,14 @@ from app.schemas.paper import (
     ChatSessionCreate, ChatSessionSummary, ChatMessageCreate, ChatMessage, ChatResponse,
     ReferenceSearchRequest, ReferenceSearchResponse,
     AgentExecuteRequest, AgentExecuteResponse,
+    SectionMoveRequest, SectionMoveResponse,
     YamlResponse, TodoTaskInfo
 )
 from app.schemas.common import ApiResponse, PaginatedResponse
 from app.domain.entities.user import User
 from app.api.deps.auth import get_current_active_user
 from app.infrastructure.repositories.paper_repository import PaperRepository
-from app.services.research_discussion_service import ResearchDiscussionService
+from app.services.research_discussion_service_v2 import ResearchDiscussionServiceV2
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -358,7 +359,7 @@ async def get_sections(
         section_outlines = [
             SectionOutline(
                 id=section.id,
-                hierarchy_path=section.hierarchy_path,
+                position=section.position,
                 section_number=section.section_number,
                 title=section.title,
                 word_count=section.word_count,
@@ -444,7 +445,7 @@ async def create_section(
         section_detail = SectionDetail(
             id=section.id,
             paper_id=section.paper_id,
-            hierarchy_path=section.hierarchy_path,
+            position=section.position,
             section_number=section.section_number,
             title=section.title,
             content=section.content,
@@ -552,7 +553,7 @@ async def send_message(
             )
         
         # 研究ディスカッションサービスでメッセージ処理
-        discussion_service = ResearchDiscussionService(session)
+        discussion_service = ResearchDiscussionServiceV2(session)
         
         response = await discussion_service.process_user_message(
             session_id=session_id,
@@ -615,7 +616,7 @@ async def get_section(
         section_detail = SectionDetail(
             id=section.id,
             paper_id=section.paper_id,
-            hierarchy_path=section.hierarchy_path,
+            position=section.position,
             section_number=section.section_number,
             title=section.title,
             content=section.content,
@@ -692,7 +693,7 @@ async def update_section(
         section_detail = SectionDetail(
             id=updated_section.id,
             paper_id=updated_section.paper_id,
-            hierarchy_path=updated_section.hierarchy_path,
+            position=updated_section.position,
             section_number=updated_section.section_number,
             title=updated_section.title,
             content=updated_section.content,
@@ -776,6 +777,135 @@ async def delete_section(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"セクション削除に失敗しました: {e}"
+        )
+
+
+@router.put("/{paper_id}/sections/{section_id}/move", response_model=ApiResponse[SectionMoveResponse])
+async def move_section(
+    paper_id: str,
+    section_id: str,
+    move_request: SectionMoveRequest,
+    current_user: User = Depends(get_current_active_user),
+    session: AsyncSession = Depends(get_session)
+):
+    """セクションの順序を変更"""
+    try:
+        repository = PaperRepository(session)
+        
+        # 論文の存在・権限確認
+        paper = await repository.get_paper_by_id(paper_id)
+        if not paper or paper.user_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="論文が見つかりません"
+            )
+        
+        # セクション存在確認
+        section = await repository.get_section_by_id(section_id)
+        if not section or section.paper_id != paper_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="セクションが見つかりません"
+            )
+        
+        # 全セクション取得
+        sections = await repository.get_sections_by_paper(paper_id)
+        if not sections:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="移動可能なセクションがありません"
+            )
+        
+        sections_list = list(sections)
+        current_position = next(i for i, s in enumerate(sections_list, 1) if s.id == section_id)
+        
+        # 移動先位置を計算
+        if move_request.action == "up":
+            new_position = max(1, current_position - 1)
+        elif move_request.action == "down":
+            new_position = min(len(sections_list), current_position + 1)
+        elif move_request.action == "top":
+            new_position = 1
+        elif move_request.action == "bottom":
+            new_position = len(sections_list)
+        elif move_request.action == "to_position":
+            if move_request.new_position is None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="to_positionの場合はnew_positionが必須です"
+                )
+            new_position = max(1, min(len(sections_list), move_request.new_position))
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="無効なアクションです"
+            )
+        
+        # 位置が変わらない場合は何もしない
+        if new_position == current_position:
+            updated_sections = [
+                SectionOutline(
+                    id=s.id,
+                    position=s.position,
+                    section_number=s.section_number,
+                    title=s.title,
+                    word_count=s.word_count,
+                    status=s.status,
+                    summary=s.summary,
+                    updated_at=s.updated_at
+                )
+                for s in sections_list
+            ]
+            
+            return ApiResponse(
+                success=True,
+                data=SectionMoveResponse(
+                    success=True,
+                    message="セクションの位置は変更されませんでした",
+                    updated_sections=updated_sections
+                )
+            )
+        
+        # セクション移動実行
+        success = await repository.move_section_to_position(section_id, new_position)
+        
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="セクション移動に失敗しました"
+            )
+        
+        # 更新後のセクション一覧を取得
+        updated_sections_models = await repository.get_sections_by_paper(paper_id)
+        updated_sections = [
+            SectionOutline(
+                id=s.id,
+                position=s.position,
+                section_number=s.section_number,
+                title=s.title,
+                word_count=s.word_count,
+                status=s.status,
+                summary=s.summary,
+                updated_at=s.updated_at
+            )
+            for s in updated_sections_models
+        ]
+        
+        move_response = SectionMoveResponse(
+            success=True,
+            message=f"セクションを{move_request.action}に移動しました",
+            updated_sections=updated_sections
+        )
+        
+        return ApiResponse(success=True, data=move_response)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"セクション移動エラー: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"セクション移動に失敗しました: {e}"
         )
 
 

@@ -18,7 +18,7 @@ export interface PaperSummary extends Paper {
 export interface PaperSection {
   id: string;
   paper_id: string;
-  hierarchy_path: string;
+  position: number;
   section_number: string;
   title: string;
   content: string;
@@ -31,7 +31,7 @@ export interface PaperSection {
 
 export interface SectionOutline {
   id: string;
-  hierarchy_path: string;
+  position: number;
   section_number: string;
   title: string;
   word_count: number;
@@ -98,6 +98,7 @@ export interface CreateSectionRequest {
 export interface UpdateSectionRequest {
   title?: string;
   content?: string;
+  section_number?: string;
   status?: string;
 }
 
@@ -223,6 +224,15 @@ export const paperService = {
       keywords,
       tags,
       limit,
+    });
+    return response;
+  },
+
+  // セクション移動
+  async moveSection(paperId: string, sectionId: string, action: 'up' | 'down' | 'top' | 'bottom' | 'to_position', newPosition?: number): Promise<any> {
+    const response = await apiClient.put(`/api/v1/papers/${paperId}/sections/${sectionId}/move`, {
+      action,
+      new_position: newPosition,
     });
     return response;
   },

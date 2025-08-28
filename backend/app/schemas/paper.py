@@ -1,7 +1,7 @@
 """
 論文執筆機能のスキーマ定義
 """
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Literal
 from pydantic import BaseModel, Field
 from datetime import datetime
 
@@ -69,13 +69,14 @@ class SectionUpdate(BaseModel):
     """セクション更新リクエスト"""
     title: Optional[str] = Field(None, min_length=1, max_length=300)
     content: Optional[str] = None
+    section_number: Optional[str] = Field(None, min_length=1, max_length=20, description="セクション番号（1, 1.1, A, I等）")
     status: Optional[str] = Field(None, pattern="^(draft|writing|review|completed)$")
 
 
 class SectionOutline(BaseModel):
     """セクションアウトライン（構造表示用）"""
     id: str
-    hierarchy_path: str
+    position: int
     section_number: str
     title: str
     word_count: int
@@ -91,7 +92,7 @@ class SectionDetail(BaseModel):
     """セクション詳細情報"""
     id: str
     paper_id: str
-    hierarchy_path: str
+    position: int
     section_number: str
     title: str
     content: str
@@ -176,6 +177,21 @@ class ChatResponse(BaseModel):
     references: List[Dict[str, Any]] = []
     suggestions: List[str] = []
     success: bool = True
+
+
+# === セクション順序変更関連 ===
+
+class SectionMoveRequest(BaseModel):
+    """セクション移動リクエスト"""
+    action: Literal["up", "down", "top", "bottom", "to_position"] = Field(..., description="移動アクション")
+    new_position: Optional[int] = Field(None, description="移動先位置（to_positionの場合必須）")
+
+
+class SectionMoveResponse(BaseModel):
+    """セクション移動レスポンス"""
+    success: bool
+    message: str
+    updated_sections: List[SectionOutline]
 
 
 # === エージェント関連 ===

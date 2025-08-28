@@ -184,8 +184,8 @@ class PaperSectionModel(Base):
     id = Column(String, primary_key=True)
     paper_id = Column(String, ForeignKey("research_papers.id"), nullable=False, index=True)
     user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
-    hierarchy_path = Column(String(50), nullable=False, index=True)  # 例: "001", "001.001", "001.001.002"
-    section_number = Column(String(20), nullable=False)  # 表示用: "1", "1.1", "1.1.2"
+    position = Column(Integer, nullable=False, index=True)  # 順序管理用: 1, 2, 3...
+    section_number = Column(String(20), nullable=False)  # ユーザー表示用: "1", "1.1", "A", "II.3"
     title = Column(String(300), nullable=False)
     content = Column(Text, default='', nullable=False)
     summary = Column(Text, default='', nullable=False)  # AI自動生成要約（150-250文字）
@@ -202,8 +202,8 @@ class PaperSectionModel(Base):
     
     # 複合制約
     __table_args__ = (
-        UniqueConstraint('paper_id', 'hierarchy_path', name='uq_paper_hierarchy'),
-        Index('idx_paper_sections_paper_hierarchy', 'paper_id', 'hierarchy_path'),
+        UniqueConstraint('paper_id', 'position', name='uq_paper_position'),
+        Index('idx_paper_sections_paper_position', 'paper_id', 'position'),
     )
 
 
