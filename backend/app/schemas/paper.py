@@ -149,7 +149,7 @@ class TodoTaskInfo(BaseModel):
     id: str
     description: str
     agent_name: str
-    priority: str
+    priority: int
     status: str
     result: Optional[Dict[str, Any]] = None
 
