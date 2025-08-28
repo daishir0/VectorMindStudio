@@ -23,6 +23,7 @@ import Profile from './pages/Profile';
 import NotFound from './pages/NotFound';
 import Papers from './pages/Papers';
 import CreatePaper from './pages/CreatePaper';
+import EditPaper from './pages/EditPaper';
 import PaperDetail from './pages/PaperDetail';
 import CreateChatSession from './pages/CreateChatSession';
 import ChatSession from './pages/ChatSession';
@@ -71,6 +72,7 @@ function App() {
                   <Route path="/papers" element={<Papers />} />
                   <Route path="/papers/create" element={<CreatePaper />} />
                   <Route path="/papers/:id" element={<PaperDetail />} />
+                  <Route path="/papers/:id/edit" element={<EditPaper />} />
                   <Route path="/papers/:id/chat/create" element={<CreateChatSession />} />
                   <Route path="/papers/:id/chat/:sessionId" element={<ChatSession />} />
                   <Route path="/profile" element={<Profile />} />
