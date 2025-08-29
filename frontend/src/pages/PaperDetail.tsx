@@ -10,12 +10,16 @@ import {
   Trash2,
   ChevronRight,
   ChevronDown,
+  ChevronUp,
   Settings,
   Save,
   X,
   Download,
   ExpandIcon,
-  Minimize2
+  Minimize2,
+  ChevronsUp,
+  ChevronsDown,
+  Edit
 } from 'lucide-react';
 import { paperService, PaperSection, SectionOutline, ChatSession } from '../services/paperService';
 import toast from 'react-hot-toast';
@@ -30,6 +34,10 @@ const PaperDetail: React.FC = () => {
   const [editingSections, setEditingSections] = useState<Set<string>>(new Set());
   const [sectionContents, setSectionContents] = useState<Record<string, string>>({});
   const [loadingSections, setLoadingSections] = useState<Set<string>>(new Set());
+  const [editingNumbers, setEditingNumbers] = useState<Set<string>>(new Set());
+  const [sectionNumbers, setSectionNumbers] = useState<Record<string, string>>({});
+  const [editingTitles, setEditingTitles] = useState<Set<string>>(new Set());
+  const [sectionTitles, setSectionTitles] = useState<Record<string, string>>({});
 
   // 論文データ取得
   const { data: paper, isLoading: paperLoading } = useQuery({
@@ -55,14 +63,27 @@ const PaperDetail: React.FC = () => {
 
   // セクション更新ミューテーション
   const updateSectionMutation = useMutation({
-    mutationFn: ({ sectionId, content }: { sectionId: string; content: string }) => 
-      paperService.updateSection(id!, sectionId, { content }),
+    mutationFn: ({ sectionId, data }: { sectionId: string; data: any }) => 
+      paperService.updateSection(id!, sectionId, data),
     onSuccess: () => {
       toast.success('セクションが更新されました');
       queryClient.invalidateQueries({ queryKey: ['paper-sections', id] });
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.detail || 'セクションの更新に失敗しました');
+    },
+  });
+
+  // セクション移動ミューテーション
+  const moveSectionMutation = useMutation({
+    mutationFn: ({ sectionId, action, newPosition }: { sectionId: string; action: 'up' | 'down' | 'top' | 'bottom' | 'to_position'; newPosition?: number }) =>
+      paperService.moveSection(id!, sectionId, action, newPosition),
+    onSuccess: (response) => {
+      toast.success(response.message || 'セクションが移動されました');
+      queryClient.invalidateQueries({ queryKey: ['paper-sections', id] });
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.detail || 'セクション移動に失敗しました');
     },
   });
 
@@ -105,7 +126,7 @@ const PaperDetail: React.FC = () => {
   const handleSectionSave = (sectionId: string) => {
     const content = sectionContents[sectionId];
     if (content !== undefined) {
-      updateSectionMutation.mutate({ sectionId, content });
+      updateSectionMutation.mutate({ sectionId, data: { content } });
       setEditingSections(prev => {
         const newSet = new Set(prev);
         newSet.delete(sectionId);
@@ -128,6 +149,116 @@ const PaperDetail: React.FC = () => {
     setSectionContents(prev => ({
       ...prev,
       [sectionId]: content
+    }));
+  };
+
+  // セクション移動ハンドラー
+  const handleMoveSection = (sectionId: string, action: 'up' | 'down' | 'top' | 'bottom') => {
+    if (moveSectionMutation.isPending) return;
+    moveSectionMutation.mutate({ sectionId, action });
+  };
+
+  // section_number編集開始
+  const handleStartNumberEdit = (section: SectionOutline) => {
+    setEditingNumbers(prev => new Set(prev).add(section.id));
+    setSectionNumbers(prev => ({
+      ...prev,
+      [section.id]: section.section_number
+    }));
+  };
+
+  // section_number編集保存
+  const handleSaveNumberEdit = (sectionId: string) => {
+    const newNumber = sectionNumbers[sectionId];
+    if (!newNumber || newNumber.trim() === '') {
+      toast.error('セクション番号を入力してください');
+      return;
+    }
+
+    // セクション更新実行
+    updateSectionMutation.mutate({
+      sectionId,
+      data: { section_number: newNumber.trim() }
+    });
+
+    setEditingNumbers(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(sectionId);
+      return newSet;
+    });
+  };
+
+  // section_number編集キャンセル
+  const handleCancelNumberEdit = (sectionId: string) => {
+    setEditingNumbers(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(sectionId);
+      return newSet;
+    });
+    setSectionNumbers(prev => {
+      const newNumbers = { ...prev };
+      delete newNumbers[sectionId];
+      return newNumbers;
+    });
+  };
+
+  // section_number変更
+  const handleNumberChange = (sectionId: string, value: string) => {
+    setSectionNumbers(prev => ({
+      ...prev,
+      [sectionId]: value
+    }));
+  };
+
+  // title編集開始
+  const handleStartTitleEdit = (section: SectionOutline) => {
+    setEditingTitles(prev => new Set(prev).add(section.id));
+    setSectionTitles(prev => ({
+      ...prev,
+      [section.id]: section.title
+    }));
+  };
+
+  // title編集保存
+  const handleSaveTitleEdit = (sectionId: string) => {
+    const newTitle = sectionTitles[sectionId];
+    if (!newTitle || newTitle.trim() === '') {
+      toast.error('セクションタイトルを入力してください');
+      return;
+    }
+
+    // セクション更新実行
+    updateSectionMutation.mutate({
+      sectionId,
+      data: { title: newTitle.trim() }
+    });
+
+    setEditingTitles(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(sectionId);
+      return newSet;
+    });
+  };
+
+  // title編集キャンセル
+  const handleCancelTitleEdit = (sectionId: string) => {
+    setEditingTitles(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(sectionId);
+      return newSet;
+    });
+    setSectionTitles(prev => {
+      const newTitles = { ...prev };
+      delete newTitles[sectionId];
+      return newTitles;
+    });
+  };
+
+  // title変更
+  const handleTitleChange = (sectionId: string, value: string) => {
+    setSectionTitles(prev => ({
+      ...prev,
+      [sectionId]: value
     }));
   };
 
@@ -421,8 +552,92 @@ const PaperDetail: React.FC = () => {
                                 )}
                               </button>
                               <div className="flex-1">
-                                <h3 className="font-medium text-gray-900">
-                                  {section.section_number} {section.title}
+                                <h3 className="font-medium text-gray-900 flex items-center">
+                                  {editingNumbers.has(section.id) ? (
+                                    <div className="flex items-center space-x-2 mr-2">
+                                      <input
+                                        type="text"
+                                        value={sectionNumbers[section.id] || ''}
+                                        onChange={(e) => handleNumberChange(section.id, e.target.value)}
+                                        className="w-16 px-1 py-0.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                        placeholder="1.1"
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') {
+                                            handleSaveNumberEdit(section.id);
+                                          } else if (e.key === 'Escape') {
+                                            handleCancelNumberEdit(section.id);
+                                          }
+                                        }}
+                                        autoFocus
+                                      />
+                                      <button
+                                        onClick={() => handleSaveNumberEdit(section.id)}
+                                        className="p-0.5 text-green-600 hover:text-green-800 transition-colors"
+                                        title="保存"
+                                      >
+                                        <Save className="w-3 h-3" />
+                                      </button>
+                                      <button
+                                        onClick={() => handleCancelNumberEdit(section.id)}
+                                        className="p-0.5 text-gray-500 hover:text-gray-700 transition-colors"
+                                        title="キャンセル"
+                                      >
+                                        <X className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      onClick={() => handleStartNumberEdit(section)}
+                                      className="inline-flex items-center hover:bg-gray-100 rounded px-1 py-0.5 mr-2 transition-colors group"
+                                      title="番号を編集"
+                                    >
+                                      <span className="mr-1">{section.section_number}</span>
+                                      <Edit className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                    </button>
+                                  )}
+                                  
+                                  {editingTitles.has(section.id) ? (
+                                    <div className="flex items-center space-x-2 flex-1">
+                                      <input
+                                        type="text"
+                                        value={sectionTitles[section.id] || ''}
+                                        onChange={(e) => handleTitleChange(section.id, e.target.value)}
+                                        className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                        placeholder="セクションタイトル"
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') {
+                                            handleSaveTitleEdit(section.id);
+                                          } else if (e.key === 'Escape') {
+                                            handleCancelTitleEdit(section.id);
+                                          }
+                                        }}
+                                        autoFocus
+                                      />
+                                      <button
+                                        onClick={() => handleSaveTitleEdit(section.id)}
+                                        className="p-0.5 text-green-600 hover:text-green-800 transition-colors"
+                                        title="保存"
+                                      >
+                                        <Save className="w-3 h-3" />
+                                      </button>
+                                      <button
+                                        onClick={() => handleCancelTitleEdit(section.id)}
+                                        className="p-0.5 text-gray-500 hover:text-gray-700 transition-colors"
+                                        title="キャンセル"
+                                      >
+                                        <X className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      onClick={() => handleStartTitleEdit(section)}
+                                      className="flex-1 text-left hover:bg-gray-100 rounded px-2 py-1 transition-colors group"
+                                      title="タイトルを編集"
+                                    >
+                                      <span className="mr-1">{section.title}</span>
+                                      <Edit className="w-3 h-3 inline opacity-0 group-hover:opacity-100 transition-opacity" />
+                                    </button>
+                                  )}
                                 </h3>
                                 <div className="flex items-center space-x-4 mt-1 text-sm text-gray-500">
                                   {getStatusBadge(section.status)}
@@ -432,6 +647,41 @@ const PaperDetail: React.FC = () => {
                               </div>
                             </div>
                             <div className="flex items-center space-x-1">
+                              {/* 移動ボタン群 */}
+                              <div className="flex items-center border-r border-gray-200 pr-2 mr-2">
+                                <button
+                                  onClick={() => handleMoveSection(section.id, 'top')}
+                                  disabled={sections?.[0]?.id === section.id || moveSectionMutation.isPending}
+                                  className="p-1 text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                                  title="最上位へ"
+                                >
+                                  <ChevronsUp className="w-3 h-3" />
+                                </button>
+                                <button
+                                  onClick={() => handleMoveSection(section.id, 'up')}
+                                  disabled={sections?.[0]?.id === section.id || moveSectionMutation.isPending}
+                                  className="p-1 text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                                  title="上へ"
+                                >
+                                  <ChevronUp className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleMoveSection(section.id, 'down')}
+                                  disabled={sections?.[sections.length - 1]?.id === section.id || moveSectionMutation.isPending}
+                                  className="p-1 text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                                  title="下へ"
+                                >
+                                  <ChevronDown className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleMoveSection(section.id, 'bottom')}
+                                  disabled={sections?.[sections.length - 1]?.id === section.id || moveSectionMutation.isPending}
+                                  className="p-1 text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                                  title="最下位へ"
+                                >
+                                  <ChevronsDown className="w-3 h-3" />
+                                </button>
+                              </div>
                               <button
                                 onClick={() => handleSectionEdit(section.id)}
                                 className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
