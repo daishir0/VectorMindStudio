@@ -69,58 +69,58 @@ class OutlineAgent(BaseAgent):
             raise AgentValidationError(f"未サポートのタスクタイプ: {task_type}")
     
     async def _create_section(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """セクションを作成"""
+        """
+        セクションを作成（AAIDC準拠 - Clear Boundaries Pattern）
+        責務: セクションのDB作成のみ。コンテンツ生成はWriterAgentが担当。
+        """
         paper_id = params.get("paper_id")
-        parent_id = params.get("parent_id")
-        title = params.get("title")
-        position = params.get("position", -1)  # -1は最後に挿入
+        section_title = params.get("section_title") or params.get("title")
+        user_id = params.get("user_id")
         
-        if not paper_id or not title:
-            raise AgentValidationError("paper_id と title は必須です")
+        if not all([paper_id, section_title, user_id]):
+            raise AgentValidationError("paper_id, section_title, user_id は必須です")
         
         try:
-            # 親セクションの階層パスを取得
-            parent_path = ""
-            if parent_id:
-                parent_section = await self.repository.get_section_by_id(parent_id)
-                if not parent_section:
-                    raise AgentValidationError(f"親セクション {parent_id} が見つかりません")
-                parent_path = parent_section.hierarchy_path
+            logger.info(f"[OutlineAgent] セクション作成開始: '{section_title}' (paper: {paper_id})")
             
-            # 新しい階層パスを生成
-            new_hierarchy_path = await self._generate_hierarchy_path(
-                paper_id, parent_path, position
-            )
+            # 新しい階層パスを生成（ルートレベル）
+            root_sections = await self.repository.get_root_sections(paper_id)
+            next_number = len(root_sections) + 1
+            new_hierarchy_path = f"{next_number:03d}"
             
             # セクション番号を生成 (例: "1.2.3")
-            section_number = self._hierarchy_path_to_number(new_hierarchy_path)
+            section_number = str(next_number)
             
-            # セクション作成
+            # セクション作成（初期状態は空コンテンツ）
             section = await self.repository.create_section(
                 paper_id=paper_id,
                 hierarchy_path=new_hierarchy_path,
                 section_number=section_number,
-                title=title
+                title=section_title,
+                content="",  # 初期は空
+                summary=""  # 初期は空
             )
             
-            # 構造検証
-            structure_issues = await self._validate_structure({"paper_id": paper_id})
+            logger.info(f"[OutlineAgent] セクション作成完了: ID={section.id}, 階層={new_hierarchy_path}")
             
+            # Clear Boundaries Pattern: OutlineAgentはセクション構造のみ返す
             return {
-                "section": {
+                "section_id": section.id,
+                "section_metadata": {
                     "id": section.id,
                     "hierarchy_path": section.hierarchy_path,
                     "section_number": section.section_number,
                     "title": section.title,
-                    "status": section.status
+                    "status": section.status,
+                    "created_at": section.created_at.isoformat()
                 },
-                "structure_issues": structure_issues.get("issues", []),
                 "action": "create_section",
-                "success": True
+                "success": True,
+                "message": f"セクション「{section_title}」の構造を作成しました"
             }
             
         except Exception as e:
-            logger.error(f"セクション作成エラー: {e}")
+            logger.error(f"[OutlineAgent] セクション作成エラー: {e}")
             raise AgentExecutionError(f"セクション作成に失敗しました: {e}")
     
     async def _update_section(self, params: Dict[str, Any]) -> Dict[str, Any]:

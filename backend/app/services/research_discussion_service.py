@@ -1,6 +1,6 @@
 """
-研究ディスカッションAIサービス
-Supervisor Agentとして5つのAIエージェントを統括
+研究ディスカッションAIサービス - AAIDC準拠版
+Supervisor Pattern + Chain Pattern + Generator-Evaluator Loop Pattern実装
 """
 from typing import Any, Dict, List, Optional, Tuple
 import logging
@@ -18,8 +18,10 @@ from app.infrastructure.external.openai_client import openai_client
 from app.services.agents import (
     BaseAgent, AgentTask, AgentResult, AgentStatus,
     OutlineAgent, SummaryAgent, WriterAgent, 
-    LogicValidatorAgent, ReferenceAgent
+    LogicValidatorAgent
+    # ReferenceAgent は ChromaDB依存のため一時的にコメントアウト
 )
+from app.services.agents.section_query_agent import SectionQueryAgent
 
 logger = logging.getLogger(__name__)
 
@@ -57,17 +59,19 @@ class ResearchDiscussionService:
         
         # エージェント群初期化
         self.outline_agent = OutlineAgent(session)
-        self.summary_agent = SummaryAgent()
+        self.summary_agent = SummaryAgent(session)
         self.writer_agent = WriterAgent()
         self.logic_validator_agent = LogicValidatorAgent()
-        self.reference_agent = ReferenceAgent()
+        self.section_query_agent = SectionQueryAgent(session)
+        # self.reference_agent = ReferenceAgent()  # ChromaDB依存のため一時的にコメントアウト
         
         self.agents = {
             "outline": self.outline_agent,
             "summary": self.summary_agent,
             "writer": self.writer_agent,
             "logic_validator": self.logic_validator_agent,
-            "reference": self.reference_agent
+            "section_query": self.section_query_agent,
+            # "reference": self.reference_agent  # ChromaDB依存のため一時的にコメントアウト
         }
         
         # エスケープハッチ設定
@@ -112,6 +116,9 @@ class ResearchDiscussionService:
             
             # タスク実行（並列処理）
             task_results = await self._execute_tasks(todo_tasks)
+            
+            # 生成されたコンテンツをデータベースに保存
+            await self._persist_generated_content(todo_tasks, paper_id)
             
             # レスポンス生成
             response = await self._generate_response(
@@ -242,11 +249,24 @@ class ResearchDiscussionService:
         elif any(keyword in message_lower for keyword in ["文献", "参考", "引用", "参照"]):
             intent = "find_references"
             required_agents = ["reference"]
+        elif any(keyword in message_lower for keyword in ["要約", "まとめ", "サマリー", "全部", "全体", "概要"]):
+            intent = "summarize_paper"
+            required_agents = ["summary"]
+        elif any(keyword in message_lower for keyword in ["教えて", "見せて", "内容", "について", "とは"]):
+            # 特定のセクション名が含まれているかチェック
+            extracted_section = self._extract_section_from_query(message)
+            if extracted_section:
+                intent = "query_section"
+                required_agents = ["section_query"]
+            else:
+                intent = "general_question"
+                required_agents = ["summary"]
         
         return {
             "main_intent": intent,
-            "target_section": None,
+            "target_section": self._extract_section_from_query(message) if intent == "query_section" else None,
             "specific_request": message,
+            "extracted_title": self._extract_section_title(message, intent),
             "urgency": urgency,
             "required_agents": required_agents
         }
@@ -275,7 +295,7 @@ class ResearchDiscussionService:
                 parameters={
                     "task_type": "create_section",
                     "paper_id": paper_id,
-                    "title": intent_analysis.get("specific_request", "新しいセクション"),
+                    "title": intent_analysis.get("extracted_title", "新しいセクション"),
                     "user_id": user_id
                 }
             ))
@@ -288,7 +308,7 @@ class ResearchDiscussionService:
                     priority=priority,
                     parameters={
                         "task_type": "generate_draft",
-                        "section_info": {"title": intent_analysis.get("specific_request", "新しいセクション")},
+                        "section_info": {"title": intent_analysis.get("extracted_title", "新しいセクション")},
                         "paper_context": {"paper_title": "論文タイトル"},
                         "requirements": "学術的で論理的な内容を作成"
                     }
@@ -332,6 +352,35 @@ class ResearchDiscussionService:
                     "user_id": user_id,
                     "query": intent_analysis.get("specific_request", ""),
                     "limit": 5
+                }
+            ))
+        
+        elif main_intent == "summarize_paper":
+            tasks.append(TodoTask(
+                id=str(uuid.uuid4()),
+                description="論文全体を要約",
+                agent_name="summary",
+                priority=priority,
+                parameters={
+                    "task_type": "create_paper_summary",
+                    "paper_id": paper_id,
+                    "user_id": user_id,
+                    "summary_type": "comprehensive",
+                    "requirements": intent_analysis.get("specific_request", "")
+                }
+            ))
+        
+        elif main_intent == "query_section":
+            tasks.append(TodoTask(
+                id=str(uuid.uuid4()),
+                description=f"セクション「{intent_analysis.get('target_section', '不明')}」の内容を回答",
+                agent_name="section_query",
+                priority=priority,
+                parameters={
+                    "task_type": "answer_section_query",
+                    "paper_id": paper_id,
+                    "question": intent_analysis.get("specific_request", ""),
+                    "target_section": intent_analysis.get("target_section")
                 }
             ))
         
@@ -457,12 +506,17 @@ class ResearchDiscussionService:
                     if isinstance(task.result, dict) and "references" in task.result:
                         references.extend(task.result["references"])
             
-            # レスポンステキスト生成
-            response_parts = []
+            # **新機能**: ユーザーフレンドリーな会話応答を生成
+            conversational_response = await self._generate_conversational_response(
+                user_message, intent_analysis, successful_results
+            )
+            
+            # タスク実行結果の詳細報告
+            response_parts = [conversational_response]
             
             # 処理状況報告
             if completed_tasks:
-                response_parts.append(f"✅ {len(completed_tasks)}件のタスクを完了しました！")
+                response_parts.append(f"\n\n✅ {len(completed_tasks)}件のタスクを完了しました！")
                 
                 # 各エージェントの結果を要約
                 for result in successful_results:
@@ -500,6 +554,99 @@ class ResearchDiscussionService:
                 "suggestions": []
             }
     
+    async def _generate_conversational_response(
+        self,
+        user_message: str,
+        intent_analysis: Dict[str, Any],
+        successful_results: List[Dict[str, Any]]
+    ) -> str:
+        """ユーザーフレンドリーな会話応答を生成"""
+        try:
+            # OpenAI APIを使用して自然な会話応答を生成
+            system_prompt = """あなたは研究論文執筆支援の専門AIアシスタントです。
+ユーザーの依頼に対して、親しみやすく、専門的でありながら分かりやすい返答をしてください。
+
+以下の点を意識してください：
+1. ユーザーの依頼内容を理解していることを示す
+2. 実行したタスクの意味や価値を簡潔に説明
+3. 次のステップの提案（必要に応じて）
+4. 親しみやすく、サポーティブなトーン
+5. 専門的な内容も理解しやすく説明
+
+機械的な報告ではなく、人との対話のような自然な応答を心がけてください。"""
+
+            # 実行結果のサマリー作成
+            results_summary = ""
+            if successful_results:
+                results_summary = "実行した作業:\n"
+                for result in successful_results:
+                    agent_name_jp = self._get_agent_name_jp(result["agent"])
+                    results_summary += f"- {agent_name_jp}: {result['description']}\n"
+                    
+                    # 結果の簡潔なサマリーを追加
+                    if isinstance(result["result"], dict):
+                        if "section" in result["result"] and "title" in result["result"]["section"]:
+                            section_title = result["result"]["section"]["title"]
+                            results_summary += f"  → 「{section_title}」セクションを作成\n"
+                        elif "draft_content" in result["result"]:
+                            word_count = result["result"].get("word_count", 0)
+                            results_summary += f"  → {word_count}語程度のコンテンツを生成\n"
+                        elif "references" in result["result"]:
+                            ref_count = len(result["result"]["references"])
+                            results_summary += f"  → {ref_count}件の文献を発見\n"
+                        elif "action" in result["result"] and result["result"]["action"] == "create_paper_summary":
+                            stats = result["result"].get("statistics", {})
+                            section_count = stats.get("section_count", 0)
+                            summary_length = stats.get("summary_length", 0)
+                            results_summary += f"  → {section_count}セクションから{summary_length}文字の要約を生成\n"
+                            # 実際の要約内容も含める
+                            summary_text = result["result"].get("summary", "")
+                            if summary_text:
+                                results_summary += f"  → 要約内容: {summary_text[:200]}...\n"
+
+            user_prompt = f"""【ユーザーの依頼】
+{user_message}
+
+【実行内容】
+{results_summary}
+
+【依頼意図】
+{intent_analysis.get('intent', '不明')} - {intent_analysis.get('specific_request', '')}
+
+上記の依頼に対して、親しみやすく専門的な会話応答を生成してください。
+実行した作業の意味や価値を説明し、必要に応じて次のステップを提案してください。
+200文字以内で簡潔にまとめてください。"""
+
+            full_prompt = f"{system_prompt}\n\n{user_prompt}"
+
+            # OpenAI APIで自然な応答を生成
+            from app.infrastructure.external.openai_client import openai_client
+            result = await openai_client.generate_text(
+                prompt=full_prompt,
+                model="gpt-4o-mini"
+            )
+
+            conversational_response = result.get("content", "").strip()
+            
+            # フォールバック応答（API失敗時）
+            if not conversational_response:
+                intent = intent_analysis.get('intent', 'general')
+                if intent == 'create_section':
+                    conversational_response = "新しいセクションの作成を承りました！構造を整理してコンテンツを生成いたします。"
+                elif intent == 'find_references':
+                    conversational_response = "関連文献の検索を実行いたします！学術的な引用に適した資料を探します。"
+                elif intent == 'check_structure':
+                    conversational_response = "論文の構造と論理的一貫性をチェックいたします！品質向上のお手伝いをします。"
+                else:
+                    conversational_response = "ご依頼を承りました！最適なアプローチで対応いたします。"
+            
+            return conversational_response
+
+        except Exception as e:
+            logger.error(f"会話応答生成エラー: {e}")
+            # エラー時のフォールバック
+            return "ご依頼いただきありがとうございます！AIエージェントが作業を実行いたします。"
+    
     def _get_agent_name_jp(self, agent_name: str) -> str:
         """エージェント名を日本語に変換"""
         name_map = {
@@ -524,6 +671,12 @@ class ResearchDiscussionService:
         # 要約生成
         if "summary" in result and "character_count" in result:
             return f"要約を生成（{result['character_count']}文字）"
+        
+        # 論文全体要約
+        if "action" in result and result["action"] == "create_paper_summary":
+            section_count = result.get("statistics", {}).get("section_count", 0)
+            summary_length = result.get("statistics", {}).get("summary_length", 0)
+            return f"論文全体を要約（{section_count}セクション、{summary_length}文字の要約生成）"
         
         # ライティング
         if "content" in result and "word_count" in result:
@@ -574,6 +727,135 @@ class ResearchDiscussionService:
             ])
         
         return suggestions[:3]  # 最大3件の提案
+
+    def _extract_section_title(self, message: str, intent: str) -> str:
+        """ユーザーメッセージから適切なセクションタイトルを抽出"""
+        import re
+        
+        # 「」や""で囲まれたタイトルを抽出
+        quoted_patterns = [
+            r'「([^」]+)」',
+            r'"([^"]+)"',
+            r'[「""]([^」""]+)[」""]'
+        ]
+        
+        for pattern in quoted_patterns:
+            matches = re.findall(pattern, message)
+            if matches:
+                title = matches[0].strip()
+                # IMRADの場合は英語タイトルも抽出
+                if any(term in title.lower() for term in ['introduction', 'methods', 'results', 'discussion']):
+                    return title
+                elif any(term in title for term in ['はじめに', '方法', '結果', '考察', '結論']):
+                    return title
+                elif len(title) < 50:  # 短いタイトルの場合
+                    return title
+        
+        # キーワードベースでタイトルを推定
+        message_lower = message.lower()
+        
+        if intent == "create_section":
+            if any(term in message_lower for term in ['introduction', 'はじめに']):
+                return "Introduction"
+            elif any(term in message_lower for term in ['methods', 'method', '方法']):
+                return "Methods"  
+            elif any(term in message_lower for term in ['results', '結果']):
+                return "Results"
+            elif any(term in message_lower for term in ['discussion', '考察', '結論']):
+                return "Discussion"
+            elif any(term in message_lower for term in ['related work', '関連研究', '先行研究']):
+                return "Related Work"
+            elif any(term in message_lower for term in ['conclusion', 'まとめ']):
+                return "Conclusion"
+            elif any(term in message_lower for term in ['abstract', '概要', '要約']):
+                return "Abstract"
+        
+        # フォールバック: メッセージの最初の15文字を使用
+        fallback_title = message[:15].replace('\n', ' ').strip()
+        return fallback_title if fallback_title else "新しいセクション"
+
+    def _extract_section_from_query(self, message: str) -> Optional[str]:
+        """クエリメッセージからセクション名を抽出"""
+        import re
+        
+        message_lower = message.lower().strip()
+        
+        # 一般的なセクション名パターン
+        common_sections = [
+            "abstract", "introduction", "methods", "methodology", "results", "discussion", 
+            "conclusion", "related work", "background", "literature review",
+            "要約", "概要", "はじめに", "序論", "方法", "手法", "結果", "考察", 
+            "結論", "まとめ", "関連研究", "先行研究", "背景"
+        ]
+        
+        # 直接的なセクション名マッチング
+        for section in common_sections:
+            if section in message_lower:
+                return section.title() if section.lower() == section else section
+        
+        # 「〇〇について」「〇〇を教えて」パターン
+        patterns = [
+            r'([a-zA-Z][a-zA-Z0-9\s]+)(?:について|を教えて|とは|の内容)',
+            r'([あ-ん一-龯][あ-ん一-龯\s]*?)(?:について|を教えて|とは|の内容)'
+        ]
+        
+        for pattern in patterns:
+            matches = re.findall(pattern, message, re.IGNORECASE)
+            if matches:
+                candidate = matches[0].strip()
+                # セクション名らしい候補をフィルタリング
+                if len(candidate) < 30 and any(term in candidate.lower() for term in common_sections):
+                    return candidate
+        
+        return None
+
+    async def _persist_generated_content(self, todo_tasks: List[TodoTask], paper_id: Optional[str]) -> None:
+        """生成されたコンテンツをデータベースに保存"""
+        if not paper_id:
+            return
+            
+        try:
+            from app.infrastructure.repositories.paper_repository import PaperRepository
+            paper_repo = PaperRepository(self.session)
+            
+            for task in todo_tasks:
+                # WriterAgentのgenerate_draftタスクの結果を処理
+                if (task.agent_name == "writer" and 
+                    task.status == "completed" and 
+                    task.result and 
+                    isinstance(task.result, dict)):
+                    
+                    draft_content = task.result.get("draft_content")
+                    if draft_content:
+                        # セクションタイトルからセクションIDを取得
+                        section_title = task.result.get("section_title")
+                        if section_title:
+                            # セクション一覧を取得してタイトルでマッチング
+                            sections = await paper_repo.get_sections_by_paper(paper_id)
+                            matching_section = None
+                            
+                            for section in sections:
+                                if section.title.strip().lower() == section_title.strip().lower():
+                                    matching_section = section
+                                    break
+                            
+                            # マッチするセクションが見つかったらコンテンツを更新
+                            if matching_section:
+                                await paper_repo.update_section(
+                                    matching_section.id,
+                                    {"content": draft_content}
+                                )
+                                logger.info(f"セクション'{section_title}'のコンテンツを更新しました")
+                            else:
+                                logger.warning(f"セクション'{section_title}'が見つかりませんでした")
+                        else:
+                            logger.warning("WriterAgentの結果にsection_titleがありません")
+                    else:
+                        logger.warning("WriterAgentの結果にdraft_contentがありません")
+                        
+        except Exception as e:
+            logger.error(f"コンテンツ保存エラー: {e}")
+            # エラーが発生してもメイン処理は継続
 
 
 # TodoTaskのto_dictメソッド追加用の拡張

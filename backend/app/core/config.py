@@ -32,13 +32,16 @@ class Settings(BaseSettings):
     # セキュリティ設定
     SECRET_KEY: str = Field(..., env="SECRET_KEY")  # 環境変数から必須で読み込み
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(30, env="ACCESS_TOKEN_EXPIRE_MINUTES")  # .envから読み込み
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     
     # OpenAI設定 (.envファイルから読み込み)
     OPENAI_API_KEY: Optional[str] = Field(None, env="OPENAI_API_KEY")
     OPENAI_MODEL: str = "gpt-4o-mini"
     EMBEDDING_MODEL: str = "text-embedding-3-small"
+    
+    # AIエージェント設定
+    AI_AGENT_TIMEOUT_SECONDS: int = Field(90, env="AI_AGENT_TIMEOUT_SECONDS")
     
     # CORS設定
     BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:3010", "http://localhost:3011", "http://localhost:5183"]

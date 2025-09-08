@@ -22,13 +22,14 @@ class ReferenceAgent(BaseAgent):
     責務: 内部DBのタグ/ベクター検索、IEEE形式引用生成
     """
     
-    def __init__(self):
+    def __init__(self, session=None):
         super().__init__(
             name="ReferenceAgent",
             description="文献検索と引用整形を行うエージェント",
             max_retries=3,
             timeout=25
         )
+        self.session = session
         self.vector_service = VectorService()
     
     def _get_supported_task_types(self) -> List[str]:

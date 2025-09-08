@@ -20,18 +20,21 @@ class SummaryAgent(BaseAgent):
     責務: セクション要約の自動生成（150-250文字）
     """
     
-    def __init__(self):
+    def __init__(self, session=None):
         super().__init__(
             name="SummaryAgent",
             description="論文セクションの要約を自動生成するエージェント",
             max_retries=3,
             timeout=20
         )
+        self.session = session
     
     def _get_supported_task_types(self) -> List[str]:
         return [
             "generate_summary",
             "batch_generate_summaries",
+            "create_paper_summary",
+            "create_summary",  # AAIDC準拠版で追加
             "evaluate_summary_quality",
             "optimize_summary"
         ]
@@ -45,6 +48,10 @@ class SummaryAgent(BaseAgent):
             return await self._generate_summary(parameters)
         elif task_type == "batch_generate_summaries":
             return await self._batch_generate_summaries(parameters)
+        elif task_type == "create_paper_summary":
+            return await self._create_paper_summary(parameters)
+        elif task_type == "create_summary":  # AAIDC準拠版で追加
+            return await self._create_summary(parameters)
         elif task_type == "evaluate_summary_quality":
             return await self._evaluate_summary_quality(parameters)
         elif task_type == "optimize_summary":
@@ -202,6 +209,84 @@ class SummaryAgent(BaseAgent):
             logger.error(f"要約品質評価エラー: {e}")
             raise AgentExecutionError(f"要約品質評価に失敗しました: {e}")
     
+    async def _create_summary(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        AAIDC準拠版: セクション要約を作成
+        
+        責務: コンテンツから要約を生成するのみ。DB保存は呼び出し元が担当。
+        """
+        summary_type = params.get("summary_type", "section_summary")
+        focus_areas = params.get("focus_areas", ["key_points"])
+        content = params.get("content", "")
+        
+        # コンテキストからコンテンツを取得（WriterAgentの結果を使用）
+        if not content and "context" in params:
+            context = params["context"]
+            if "writer" in context:
+                writer_result = context["writer"]
+                content = writer_result.get("draft_content") or writer_result.get("content", "")
+        
+        if not content:
+            # 空のコンテンツの場合はデフォルト要約
+            return {
+                "summary": "要約対象のコンテンツが見つかりません。",
+                "content": content,
+                "summary_type": summary_type,
+                "focus_areas": focus_areas,
+                "action": "create_summary",
+                "success": True
+            }
+        
+        try:
+            logger.info(f"[SummaryAgent] 要約作成開始: タイプ={summary_type}")
+            
+            # フォーカスエリアに基づくプロンプト構築
+            focus_instructions = ""
+            if "key_points" in focus_areas:
+                focus_instructions += "- 主要なポイントを抽出\n"
+            if "methodology" in focus_areas:
+                focus_instructions += "- 手法・方法論を要約\n"
+            if "conclusions" in focus_areas:
+                focus_instructions += "- 結論・成果を要約\n"
+            
+            prompt = f"""以下のコンテンツから学術論文に適した要約を作成してください。
+
+【要約指針】
+{focus_instructions}
+- 150-250文字程度
+- 客観的で学術的な文体
+- 重要な情報を簡潔に伝達
+
+【対象コンテンツ】
+{content[:1500]}
+
+【要約】"""
+
+            result = await openai_client.generate_text(
+                prompt=prompt,
+                model="gpt-4o-mini"
+            )
+            summary = result.get("content", "").strip()
+            
+            if not summary:
+                summary = "コンテンツの要約を生成できませんでした。"
+            
+            logger.info(f"[SummaryAgent] 要約作成完了: {len(summary)}文字")
+            
+            return {
+                "summary": summary,
+                "content": content,
+                "summary_type": summary_type,
+                "focus_areas": focus_areas,
+                "action": "create_summary",
+                "success": True,
+                "message": f"{summary_type}の要約を作成しました"
+            }
+            
+        except Exception as e:
+            logger.error(f"[SummaryAgent] 要約作成エラー: {e}")
+            raise AgentExecutionError(f"要約作成に失敗しました: {e}")
+    
     async def _optimize_summary(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """要約を最適化"""
         content = params.get("content")
@@ -272,6 +357,116 @@ class SummaryAgent(BaseAgent):
         except Exception as e:
             logger.error(f"要約最適化エラー: {e}")
             raise AgentExecutionError(f"要約最適化に失敗しました: {e}")
+    
+    async def _create_paper_summary(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """論文全体の要約を作成"""
+        paper_id = params.get("paper_id")
+        summary_type = params.get("summary_type", "comprehensive")  # comprehensive, brief, abstract
+        requirements = params.get("requirements", "")
+        
+        if not paper_id:
+            raise AgentValidationError("paper_id は必須です")
+        
+        try:
+            # 論文の全セクションを取得
+            from app.infrastructure.repositories.paper_repository import PaperRepository
+            repository = PaperRepository(self.session)
+            
+            # 論文情報取得
+            paper = await repository.get_paper_by_id(paper_id)
+            if not paper:
+                raise AgentValidationError(f"論文が見つかりません: {paper_id}")
+            
+            # セクション情報取得
+            sections = await repository.get_sections_by_paper(paper_id)
+            if not sections:
+                return {
+                    "summary": "この論文にはまだセクションが作成されていません。セクションを追加してから要約を再実行してください。",
+                    "paper_title": paper.title,
+                    "section_count": 0,
+                    "word_count": 0,
+                    "action": "create_paper_summary",
+                    "success": True
+                }
+            
+            # 各セクションの内容を収集
+            section_summaries = []
+            total_word_count = 0
+            
+            for section in sections:
+                if section.content and section.content.strip():
+                    # 各セクションの簡潔な要約を作成
+                    section_summary = await self._generate_summary({
+                        "content": section.content,
+                        "title": section.title,
+                        "target_length": 150
+                    })
+                    
+                    section_summaries.append({
+                        "title": section.title,
+                        "section_number": section.section_number,
+                        "summary": section_summary.get("summary", ""),
+                        "word_count": section.word_count or 0
+                    })
+                    total_word_count += section.word_count or 0
+            
+            # 論文全体の統合要約を生成
+            if summary_type == "comprehensive":
+                summary_prompt = f'''以下は「{paper.title}」という論文の各セクションの要約です。
+論文全体の包括的な要約を作成してください。
+
+【各セクションの要約】
+''' + "\n".join([f"■ {s['title']}: {s['summary']}" for s in section_summaries])
+
+                summary_prompt += f'''
+
+【要求事項】
+- 論文の主要な貢献と発見を明確に示す
+- 研究の背景、方法、結果、結論を含む
+- 学術的で客観的な文体で記述
+- 400-600語程度でまとめる
+{f"- 追加要求: {requirements}" if requirements else ""}
+
+論文全体の要約を作成してください。'''
+
+            elif summary_type == "brief":
+                summary_prompt = f'''「{paper.title}」の各セクション要約から、200語以内の簡潔な要約を作成してください。
+
+セクション要約: ''' + " / ".join([s['summary'][:100] for s in section_summaries])
+
+            else:  # abstract style
+                summary_prompt = f'''「{paper.title}」のAbstract形式の要約を作成してください。研究目的、方法、主要結果、結論を含めて250語程度でまとめてください。'''
+
+            # OpenAI APIで統合要約を生成
+            from app.infrastructure.external.openai_client import openai_client
+            result = await openai_client.generate_text(
+                prompt=summary_prompt,
+                model="gpt-4o-mini"
+            )
+
+            comprehensive_summary = result.get("content", "").strip()
+            
+            if not comprehensive_summary:
+                comprehensive_summary = "要約生成中にエラーが発生しました。各セクションの要約は正常に作成されています。"
+            
+            return {
+                "summary": comprehensive_summary,
+                "paper_title": paper.title,
+                "paper_description": paper.description,
+                "section_summaries": section_summaries,
+                "statistics": {
+                    "section_count": len(sections),
+                    "total_word_count": total_word_count,
+                    "summary_length": len(comprehensive_summary),
+                    "summary_type": summary_type
+                },
+                "action": "create_paper_summary",
+                "success": True
+            }
+            
+        except Exception as e:
+            logger.error(f"論文要約作成エラー: {e}")
+            raise AgentExecutionError(f"論文要約作成に失敗しました: {e}")
     
     def _get_system_prompt(self, section_type: str, target_length: int) -> str:
         """セクションタイプ別のシステムプロンプト"""

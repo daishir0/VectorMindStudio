@@ -22,7 +22,7 @@ from app.schemas.common import ApiResponse, PaginatedResponse
 from app.domain.entities.user import User
 from app.api.deps.auth import get_current_active_user
 from app.infrastructure.repositories.paper_repository import PaperRepository
-from app.services.research_discussion_service_v2 import ResearchDiscussionServiceV2
+from app.services.research_discussion_service_v3 import ResearchDiscussionServiceV3
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -553,7 +553,7 @@ async def send_message(
             )
         
         # 研究ディスカッションサービスでメッセージ処理
-        discussion_service = ResearchDiscussionServiceV2(session)
+        discussion_service = ResearchDiscussionServiceV3(session)
         
         response = await discussion_service.process_user_message(
             session_id=session_id,

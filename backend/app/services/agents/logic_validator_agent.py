@@ -52,13 +52,14 @@ class LogicValidatorAgent(BaseAgent):
     責務: 「目的→方法→結果→解釈」などの論理一貫性検証
     """
     
-    def __init__(self):
+    def __init__(self, session=None):
         super().__init__(
             name="LogicValidatorAgent",
             description="論文の論理構造と一貫性を検証するエージェント",
             max_retries=2,
             timeout=30
         )
+        self.session = session
     
     def _get_supported_task_types(self) -> List[str]:
         return [

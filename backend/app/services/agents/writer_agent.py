@@ -6,6 +6,7 @@ import logging
 
 from .base_agent import BaseAgent, AgentTask, AgentValidationError, AgentExecutionError
 from app.infrastructure.external.openai_client import openai_client
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -13,13 +14,14 @@ logger = logging.getLogger(__name__)
 class WriterAgent(BaseAgent):
     """簡素化されたライティングエージェント"""
     
-    def __init__(self):
+    def __init__(self, session=None):
         super().__init__(
             name="WriterAgent",
             description="論文コンテンツの生成・改善を行うエージェント",
             max_retries=3,
-            timeout=45
+            timeout=settings.AI_AGENT_TIMEOUT_SECONDS
         )
+        self.session = session
     
     def _get_supported_task_types(self) -> List[str]:
         return [
@@ -217,28 +219,47 @@ class WriterAgent(BaseAgent):
             raise AgentExecutionError(f"コンテンツ要約に失敗しました: {e}")
     
     async def _generate_draft(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """論文セクションの初稿を生成"""
-        section_info = params.get("section_info", {})
-        paper_context = params.get("paper_context", {})
+        """
+        論文セクションの初稿を生成（AAIDC準拠 - Clear Boundaries Pattern）
+        責務: セクションコンテンツの生成のみ。DB保存は呼び出し元が担当。
+        """
+        section_title = params.get("section_title") 
         requirements = params.get("requirements", "")
+        paper_id = params.get("paper_id")
+        context = params.get("context", {})
         
-        section_title = section_info.get("title")
         if not section_title:
             raise AgentValidationError("section_title は必須です")
         
         try:
-            prompt = f"""学術論文の以下のセクションの初稿を作成してください。
+            logger.info(f"[WriterAgent] ドラフト生成開始: '{section_title}'")
+            
+            # コンテキストから論文情報を取得
+            paper_context = ""
+            if context and "outline" in context:
+                outline_result = context["outline"]
+                if "section_metadata" in outline_result:
+                    metadata = outline_result["section_metadata"]
+                    paper_context += f"セクション番号: {metadata.get('section_number')}\n"
+                    paper_context += f"階層: {metadata.get('hierarchy_path')}\n"
+            
+            # プロンプト構築
+            prompt = f"""学術論文の以下のセクションの高品質なコンテンツを生成してください。
 
-【論文タイトル】
-{paper_context.get('paper_title', '')}
-
-【セクション】
-{section_title}
+【セクション情報】
+タイトル: {section_title}
+{paper_context}
 
 【要件】
-{requirements}
+{requirements if requirements else '学術的で論理的な内容を含む包括的なセクション'}
 
-【内容】"""
+【生成指針】
+- 学術論文にふさわしい専門的で客観的な文体
+- 論理的な構成と説得力のある議論
+- 適切な長さ（500-1000語程度）
+- 必要に応じて具体例や分析を含める
+
+【セクション内容】"""
             
             result = await openai_client.generate_text(
                 prompt=prompt,
@@ -246,17 +267,26 @@ class WriterAgent(BaseAgent):
             )
             draft_content = result.get("content", "")
             
+            if not draft_content:
+                raise AgentExecutionError("コンテンツ生成結果が空です")
+            
+            logger.info(f"[WriterAgent] ドラフト生成完了: {len(draft_content.split())}語")
+            
+            # Clear Boundaries Pattern: WriterAgentはコンテンツのみ返す
             return {
                 "draft_content": draft_content,
+                "content": draft_content,  # 後方互換性
                 "section_title": section_title,
                 "word_count": len(draft_content.split()),
+                "character_count": len(draft_content),
                 "action": "generate_draft",
-                "success": True
+                "success": True,
+                "message": f"セクション「{section_title}」のコンテンツを生成しました"
             }
             
         except Exception as e:
-            logger.error(f"初稿生成エラー: {e}")
-            raise AgentExecutionError(f"初稿生成に失敗しました: {e}")
+            logger.error(f"[WriterAgent] ドラフト生成エラー: {e}")
+            raise AgentExecutionError(f"ドラフト生成に失敗しました: {e}")
     
     async def _academic_polish(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """学術的な文章に磨き上げる"""
