@@ -20,9 +20,9 @@ from app.infrastructure.external.openai_client import openai_client
 # エージェント群 - Enhanced版
 from app.services.agents import (
     BaseAgent, AgentTask, AgentResult, AgentStatus,
-    OutlineAgent, SummaryAgent, WriterAgent, LogicValidatorAgent, 
+    OutlineAgent, SummaryAgent, WriterAgent, LogicValidatorAgent,
     AnalysisAgent, EditingAgent, QualityAgent, DiscoveryAgent, GenerationAgent,
-    StrategyAgent, OptimizationAgent
+    StrategyAgent, OptimizationAgent, StructureAgent
 )
 from app.services.agents.section_query_agent import SectionQueryAgent
 from app.services.agents.supervisor_agent import SupervisorAgent
@@ -55,7 +55,7 @@ class ResearchDiscussionServiceV3:
         # 専門エージェント群（Enhanced版）- 全エージェントにセッション渡し
         self.specialist_agents = {
             "outline": OutlineAgent(session),
-            "summary": SummaryAgent(session), 
+            "summary": SummaryAgent(session),
             "writer": WriterAgent(session),
             "logic_validator": LogicValidatorAgent(session),
             "section_query": SectionQueryAgent(session),  # Enhanced版
@@ -65,7 +65,8 @@ class ResearchDiscussionServiceV3:
             "discovery": DiscoveryAgent(session),  # Phase 2：研究発見・探索エージェント
             "generation": GenerationAgent(session),  # Phase 2：コンテンツ生成・拡張エージェント
             "strategy": StrategyAgent(session),  # Phase 3：研究戦略・計画エージェント
-            "optimization": OptimizationAgent(session)  # Phase 3：研究最適化・効率化エージェント
+            "optimization": OptimizationAgent(session),  # Phase 3：研究最適化・効率化エージェント
+            "structure": StructureAgent(session)  # Phase 3：論文構造最適化エージェント
         }
         
         # 全エージェント統合
@@ -111,7 +112,8 @@ class ResearchDiscussionServiceV3:
             
             # Step 3: 専門エージェントでのタスク実行
             execution_results = await self._execute_specialist_tasks(
-                workflow_result["workflow_plan"]["tasks"]
+                workflow_result["workflow_plan"]["tasks"],
+                paper_id
             )
             
             # Step 4: 結果の統合と回答生成
@@ -257,21 +259,22 @@ class ResearchDiscussionServiceV3:
             return {"workflow_plan": {"tasks": []}, "success": False}
     
     async def _execute_specialist_tasks(
-        self, 
-        planned_tasks: List[Dict[str, Any]]
+        self,
+        planned_tasks: List[Dict[str, Any]],
+        paper_id: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """Step 3: 専門エージェントでのタスク実行"""
         if not planned_tasks:
             return []
-        
+
         try:
-            logger.info(f"[ServiceV3] 専門エージェント実行開始: {len(planned_tasks)}タスク")
-            
+            logger.info(f"[ServiceV3] 専門エージェント実行開始: {len(planned_tasks)}タスク, paper_id={paper_id}")
+
             execution_results = []
-            
+
             # タスクの並列実行（最大3個まで）
             semaphore = asyncio.Semaphore(self.max_parallel_agents)
-            
+
             async def execute_single_task(task_config: Dict[str, Any]) -> Dict[str, Any]:
                 async with semaphore:
                     agent_name = task_config.get("agent")
@@ -282,13 +285,20 @@ class ResearchDiscussionServiceV3:
                             "success": False,
                             "error": f"未知のエージェント: {agent_name}"
                         }
-                    
+
                     try:
+                        # タスクparametersにpaper_idを追加
+                        task_parameters = task_config.get("parameters", {}).copy()
+                        if paper_id:
+                            task_parameters["paper_id"] = paper_id
+
+                        logger.info(f"[ServiceV3] エージェント {agent_name} 実行開始, parameters keys: {list(task_parameters.keys())}")
+
                         # AgentTaskオブジェクト作成
                         agent_task = AgentTask(
                             id=str(uuid.uuid4()),
                             task_type=task_config.get("task_type", "unknown"),
-                            parameters=task_config.get("parameters", {}),
+                            parameters=task_parameters,
                             priority=1 if task_config.get("priority") == "high" else 2
                         )
                         
@@ -298,14 +308,21 @@ class ResearchDiscussionServiceV3:
 
                         # WriterAgentの結果をセクションとして保存
                         if agent_name == "writer" and result:
-                            await self._save_writer_result_to_section(result, task_config.get("parameters", {}))
+                            await self._save_writer_result_to_section(result, task_parameters)
+
+                        # AgentResultの実際のステータスをチェック
+                        agent_succeeded = (
+                            hasattr(result, 'status') and
+                            result.status == AgentStatus.COMPLETED and
+                            result.result is not None
+                        )
 
                         return {
                             "agent": agent_name,
                             "task_type": task_config.get("task_type"),
                             "description": task_config.get("description"),
                             "result": result,
-                            "success": True
+                            "success": agent_succeeded
                         }
                         
                     except Exception as e:
@@ -351,9 +368,36 @@ class ResearchDiscussionServiceV3:
     ) -> Dict[str, Any]:
         """Step 4: 結果統合と最終回答生成"""
         try:
+            # デバッグログ追加（ファイルにも出力）
+            import json
+            debug_file = "/tmp/supervisor_debug.log"
+            with open(debug_file, "a") as f:
+                f.write(f"\n\n=== {datetime.now()} ===\n")
+                f.write(f"execution_results数: {len(execution_results)}\n")
+                for idx, r in enumerate(execution_results):
+                    f.write(f"Result {idx}: agent={r.get('agent')}, success={r.get('success')}, error={r.get('error')}\n")
+                    f.write(f"  task_type: {r.get('task_type')}\n")
+                    f.write(f"  description: {r.get('description')}\n")
+                    f.write(f"  result type: {type(r.get('result'))}\n")
+                    if r.get('result'):
+                        result_obj = r.get('result')
+                        if hasattr(result_obj, 'result'):
+                            f.write(f"  result.result: {result_obj.result}\n")
+                            f.write(f"  result.status: {result_obj.status}\n")
+                        f.write(f"  result keys: {list(result_obj.keys() if isinstance(result_obj, dict) else [])}\n")
+
+            logger.info(f"[ServiceV3] execution_results数: {len(execution_results)}")
+            for idx, r in enumerate(execution_results):
+                logger.info(f"[ServiceV3] Result {idx}: agent={r.get('agent')}, success={r.get('success')}, error={r.get('error')}")
+
             # 成功したタスクの抽出
             successful_results = [r for r in execution_results if r.get("success")]
-            
+
+            with open(debug_file, "a") as f:
+                f.write(f"successful_results数: {len(successful_results)}\n")
+
+            logger.info(f"[ServiceV3] successful_results数: {len(successful_results)}")
+
             # エージェント実行結果を適切な形式に変換（Enhanced対応）
             formatted_task_results = {}
             for result in successful_results:
@@ -363,7 +407,7 @@ class ResearchDiscussionServiceV3:
                 # エージェント名をResponseFormatter期待形式に変換
                 formatter_agent_name = {
                     "section_query": "SectionQueryAgent",
-                    "writer": "WriterAgent", 
+                    "writer": "WriterAgent",
                     "outline": "OutlineAgent",
                     "summary": "SummaryAgent",
                     "logic_validator": "LogicValidatorAgent",
@@ -373,7 +417,8 @@ class ResearchDiscussionServiceV3:
                     "discovery": "DiscoveryAgent",
                     "generation": "GenerationAgent",
                     "strategy": "StrategyAgent",
-                    "optimization": "OptimizationAgent"
+                    "optimization": "OptimizationAgent",
+                    "structure": "StructureAgent"
                 }.get(agent_name, agent_name)
                 
                 # EnhancedBaseAgentの結果処理
@@ -785,11 +830,16 @@ class ResearchDiscussionServiceV3:
     ) -> None:
         """WriterAgentの結果をセクションとして保存"""
         try:
+            logger.info(f"[ServiceV3] _save_writer_result_to_section開始")
+            logger.info(f"[ServiceV3] task_params: {task_params}")
+
             # AgentResultオブジェクトから実際の結果を抽出
             if hasattr(agent_result, 'result') and isinstance(agent_result.result, dict):
                 writer_result = agent_result.result
+                logger.info(f"[ServiceV3] AgentResult.resultから抽出")
             elif isinstance(agent_result, dict):
                 writer_result = agent_result
+                logger.info(f"[ServiceV3] dictから直接使用")
             else:
                 logger.warning(f"[ServiceV3] WriterAgent結果の形式が不正: {type(agent_result)}")
                 return
@@ -799,12 +849,17 @@ class ResearchDiscussionServiceV3:
             section_title = writer_result.get("section_title") or task_params.get("section_title", "新規セクション")
             paper_id = task_params.get("paper_id")
 
+            logger.info(f"[ServiceV3] draft_content length: {len(draft_content) if draft_content else 0}")
+            logger.info(f"[ServiceV3] section_title: {section_title}")
+            logger.info(f"[ServiceV3] paper_id: {paper_id}")
+
             if not draft_content or not paper_id:
                 logger.warning(f"[ServiceV3] セクション保存に必要な情報が不足: draft_content={bool(draft_content)}, paper_id={paper_id}")
                 return
 
             # 次のポジションを取得
             next_position = await self.repository.get_next_position(paper_id)
+            logger.info(f"[ServiceV3] next_position: {next_position}")
 
             # セクション番号を自動生成（簡易版）
             section_number = f"{next_position}"
@@ -819,7 +874,7 @@ class ResearchDiscussionServiceV3:
                 summary=writer_result.get("summary", "")
             )
 
-            logger.info(f"[ServiceV3] WriterAgent結果をセクションとして保存: section_id={section.id}, title={section_title}")
+            logger.info(f"[ServiceV3] WriterAgent結果をセクションとして保存成功: section_id={section.id}, title={section_title}, content_length={len(draft_content)}")
 
         except Exception as e:
             logger.error(f"[ServiceV3] WriterAgent結果の保存エラー: {e}", exc_info=True)
