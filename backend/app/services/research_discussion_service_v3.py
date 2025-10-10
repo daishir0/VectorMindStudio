@@ -295,7 +295,11 @@ class ResearchDiscussionServiceV3:
                         # エージェント実行
                         agent = self.specialist_agents[agent_name]
                         result = await agent.execute_task(agent_task)
-                        
+
+                        # WriterAgentの結果をセクションとして保存
+                        if agent_name == "writer" and result:
+                            await self._save_writer_result_to_section(result, task_config.get("parameters", {}))
+
                         return {
                             "agent": agent_name,
                             "task_type": task_config.get("task_type"),
@@ -774,10 +778,57 @@ class ResearchDiscussionServiceV3:
         
         return suggestions[:3]
     
+    async def _save_writer_result_to_section(
+        self,
+        agent_result: Any,
+        task_params: Dict[str, Any]
+    ) -> None:
+        """WriterAgentの結果をセクションとして保存"""
+        try:
+            # AgentResultオブジェクトから実際の結果を抽出
+            if hasattr(agent_result, 'result') and isinstance(agent_result.result, dict):
+                writer_result = agent_result.result
+            elif isinstance(agent_result, dict):
+                writer_result = agent_result
+            else:
+                logger.warning(f"[ServiceV3] WriterAgent結果の形式が不正: {type(agent_result)}")
+                return
+
+            # コンテンツとタイトルを取得
+            draft_content = writer_result.get("draft_content") or writer_result.get("content", "")
+            section_title = writer_result.get("section_title") or task_params.get("section_title", "新規セクション")
+            paper_id = task_params.get("paper_id")
+
+            if not draft_content or not paper_id:
+                logger.warning(f"[ServiceV3] セクション保存に必要な情報が不足: draft_content={bool(draft_content)}, paper_id={paper_id}")
+                return
+
+            # 次のポジションを取得
+            next_position = await self.repository.get_next_position(paper_id)
+
+            # セクション番号を自動生成（簡易版）
+            section_number = f"{next_position}"
+
+            # セクションを作成
+            section = await self.repository.create_section(
+                paper_id=paper_id,
+                position=next_position,
+                section_number=section_number,
+                title=section_title,
+                content=draft_content,
+                summary=writer_result.get("summary", "")
+            )
+
+            logger.info(f"[ServiceV3] WriterAgent結果をセクションとして保存: section_id={section.id}, title={section_title}")
+
+        except Exception as e:
+            logger.error(f"[ServiceV3] WriterAgent結果の保存エラー: {e}", exc_info=True)
+            # エラーでも処理を中断しない（チャットには表示されている）
+
     async def _record_conversation(
         self,
         session_id: str,
-        user_message: str, 
+        user_message: str,
         response: Dict[str, Any],
         user_id: str
     ) -> None:
@@ -789,17 +840,17 @@ class ResearchDiscussionServiceV3:
                 role="user",
                 content=user_message
             )
-            
+
             # AIの応答を記録
             await self.repository.create_chat_message(
                 session_id=session_id,
-                role="assistant", 
+                role="assistant",
                 content=response.get("message", ""),
                 agent_name="SupervisorV3",
                 todo_tasks=[],
                 references=response.get("references", [])
             )
-            
+
         except Exception as e:
             logger.error(f"[ServiceV3] 会話記録エラー: {e}")
             # エラーでも処理を中断しない

@@ -123,9 +123,9 @@ class ResponseFormatter:
                 }
             }
         
-        content = writer_result.get("generated_content", "")
+        content = writer_result.get("generated_content") or writer_result.get("draft_content") or writer_result.get("content", "")
         word_count = writer_result.get("word_count", len(content.split()) if content else 0)
-        section_title = writer_result.get("target_section", "新規セクション")
+        section_title = writer_result.get("target_section") or writer_result.get("section_title", "新規セクション")
         execution_time = writer_result.get("execution_time", "不明")
         writing_style = writer_result.get("style", "academic")
         quality_metrics = writer_result.get("quality_metrics", {})
