@@ -208,19 +208,29 @@ class ResponseFormatter:
     @staticmethod
     def format_summary_response(summary_result: Dict[str, Any]) -> Dict[str, Any]:
         """SummaryAgentの結果をフォーマット"""
+        # カスタムメッセージがある場合はそれを優先
+        custom_message = summary_result.get("custom_message")
+        if custom_message:
+            return {
+                "message": custom_message,
+                "summary_info": {
+                    "custom_guidance": True
+                }
+            }
+
         if not summary_result.get("success", False):
             return {"message": "要約の生成中にエラーが発生しました。"}
-        
+
         summary_text = summary_result.get("summary", "")
         word_count = summary_result.get("word_count", len(summary_text.split()))
         key_points = summary_result.get("key_points", [])
-        
+
         message = f"論文の要約を作成しました（{word_count}語）：\n\n{summary_text}"
         if key_points:
             message += "\n\n**主要ポイント：**\n"
             for i, point in enumerate(key_points, 1):
                 message += f"{i}. {point}\n"
-        
+
         return {
             "message": message,
             "summary_info": {
@@ -270,7 +280,9 @@ class ResponseFormatter:
         task_summaries = {}
         
         # 各エージェントの結果を処理
+        logger.info(f"[ResponseFormatter] Processing {len(task_results)} agent results: {list(task_results.keys())}")
         for agent_name, result in task_results.items():
+            logger.info(f"[ResponseFormatter] Processing agent: {agent_name}, result type: {type(result)}, has 'success': {result.get('success') if isinstance(result, dict) else 'N/A'}")
             if not isinstance(result, dict):
                 continue
                 
@@ -352,17 +364,17 @@ class ResponseFormatter:
                 # 品質評価結果の処理
                 if result.get("success", False):
                     response = "論文の品質評価結果をお答えします。\n\n"
-                    
+
                     # 総合品質スコア
                     if "overall_quality" in result:
                         score = result["overall_quality"]
                         response += f"【総合品質スコア】\n{score:.1f}/10\n\n"
-                    
+
                     # 出版準備度
                     if "readiness_assessment" in result:
                         readiness = result["readiness_assessment"]
                         response += f"【出版準備度】\n{readiness}\n\n"
-                    
+
                     # 改善推奨事項
                     recommendations = result.get("improvement_recommendations", [])
                     if recommendations:
@@ -370,18 +382,476 @@ class ResponseFormatter:
                         for i, rec in enumerate(recommendations[:5], 1):
                             response += f"{i}. {rec}\n"
                         response += "\n"
-                    
+
                     # セクション別品質スコア
                     quality_scores = result.get("quality_scores", {})
                     if quality_scores:
                         response += "【セクション別品質】\n"
                         for section, score in list(quality_scores.items())[:3]:
                             response += f"・{section}: {score:.1f}/10\n"
-                    
+
                     final_message_parts.append(response)
                     task_summaries["quality"] = "完了"
-        
+
+            elif agent_name == "GenerationAgent":
+                # コンテンツ生成結果の処理
+                if result.get("success", False):
+                    task_type = result.get("task_type", "generation")
+
+                    if task_type == "outline_generation":
+                        # アウトライン生成結果
+                        response = "論文アウトラインの生成が完了しました。\n\n"
+
+                        # outline_resultから情報を取得
+                        outline_result = result.get("outline_result", result.get("generated_result", {}))
+
+                        # 論文構造情報
+                        paper_structure = outline_result.get("paper_structure", {})
+                        if paper_structure:
+                            # タイトル
+                            title = paper_structure.get("title", "")
+                            if title:
+                                response += f"【提案タイトル】\n{title}\n\n"
+
+                            # メインセクション
+                            main_sections = paper_structure.get("main_sections", [])
+                            if main_sections:
+                                response += "【論文構成】\n"
+                                for i, section in enumerate(main_sections, 1):
+                                    section_title = section.get("title", f"セクション{i}")
+                                    purpose = section.get("purpose", "")
+                                    response += f"{i}. {section_title}"
+                                    if purpose:
+                                        response += f" - {purpose}"
+                                    response += "\n"
+                                response += "\n"
+
+                        # 構造の合理性
+                        structural_rationale = outline_result.get("structural_rationale", {})
+                        if structural_rationale:
+                            org_logic = structural_rationale.get("organization_logic", "")
+                            if org_logic:
+                                response += f"【構造化の論理】\n{org_logic}\n\n"
+
+                        # 内容分配
+                        content_distribution = outline_result.get("content_distribution", {})
+                        if content_distribution:
+                            total_length = content_distribution.get("total_estimated_length", "不明")
+                            response += f"【推定総文字数】\n{total_length}\n\n"
+
+                        # 完成度スコア
+                        completeness = result.get("outline_completeness", outline_result.get("outline_completeness", 0))
+                        if completeness > 0:
+                            response += f"【アウトライン完成度】\n{completeness:.1%}\n"
+
+                        final_message_parts.append(response)
+                        task_summaries["outline_generation"] = "完了"
+
+                    elif task_type == "section_generation":
+                        # セクション生成結果
+                        response = "セクションコンテンツの生成が完了しました。\n\n"
+
+                        generated_result = result.get("generated_result", {})
+                        generated_content = generated_result.get("generated_content", "")
+
+                        if generated_content:
+                            word_count = result.get("actual_word_count", 0)
+                            response += f"【生成されたコンテンツ】\n（{word_count}文字）\n\n"
+
+                            # コンテンツが長い場合は冒頭部分のみ表示
+                            if len(generated_content) > 500:
+                                response += generated_content[:500] + "...\n\n（全文は論文に保存されました）"
+                            else:
+                                response += generated_content
+
+                        # 品質スコア
+                        quality_score = result.get("quality_score", 0)
+                        if quality_score > 0:
+                            response += f"\n\n【品質スコア】\n{quality_score:.1%}"
+
+                        final_message_parts.append(response)
+                        task_summaries["section_generation"] = "完了"
+
+                    elif task_type == "content_expansion":
+                        # コンテンツ拡張結果
+                        response = "既存コンテンツの拡張が完了しました。\n\n"
+
+                        expansion_result = result.get("expansion_result", {})
+                        expanded_content = expansion_result.get("expanded_content", "")
+
+                        if expanded_content:
+                            expansion_analysis = expansion_result.get("expansion_analysis", {})
+                            expansion_ratio = expansion_analysis.get("expansion_ratio", result.get("actual_expansion_ratio", 1.0))
+                            response += f"【拡張倍率】\n{expansion_ratio:.1f}倍\n\n"
+
+                            # 拡張内容
+                            if len(expanded_content) > 500:
+                                response += f"【拡張後内容（冒頭部分）】\n{expanded_content[:500]}...\n"
+                            else:
+                                response += f"【拡張後内容】\n{expanded_content}\n"
+
+                        final_message_parts.append(response)
+                        task_summaries["content_expansion"] = "完了"
+
+                    else:
+                        # その他の生成タスク
+                        response = f"コンテンツ生成（{task_type}）が完了しました。\n"
+                        final_message_parts.append(response)
+                        task_summaries["generation"] = "完了"
+
+            elif agent_name == "StructureAgent":
+                # 構造最適化結果の処理
+                if result.get("success", False):
+                    # actionまたはtask_typeフィールドでタスクタイプを判定
+                    task_type = result.get("task_type") or result.get("action", "structure")
+
+                    if task_type == "analyze_structure":
+                        # 構造分析結果
+                        response = "論文構造の分析が完了しました。\n\n"
+
+                        # analysisオブジェクトから情報を取得
+                        analysis = result.get("analysis", {})
+                        structure_type = analysis.get("structure_type", result.get("structure_type", "不明"))
+                        coherence_score = analysis.get("coherence_score", result.get("coherence_score", 0))
+
+                        response += f"【現在の構造形式】\n{structure_type}\n\n"
+
+                        # coherence_scoreは0.0-1.0の範囲なので10倍して表示
+                        if coherence_score <= 1.0:
+                            coherence_score = coherence_score * 10
+
+                        response += f"【構造一貫性スコア】\n{coherence_score:.1f}/10\n\n"
+
+                        # 問題点
+                        issues = analysis.get("issues", result.get("issues", []))
+                        if issues:
+                            response += "【発見された問題点】\n"
+                            for i, issue in enumerate(issues[:5], 1):
+                                response += f"{i}. {issue}\n"
+                            response += "\n"
+
+                        # 強み
+                        strengths = analysis.get("strengths", result.get("strengths", []))
+                        if strengths:
+                            response += "【構造の強み】\n"
+                            for i, strength in enumerate(strengths[:3], 1):
+                                response += f"{i}. {strength}\n"
+                            response += "\n"
+
+                        # 改善提案
+                        suggestions = analysis.get("suggestions", result.get("suggestions", []))
+                        if suggestions:
+                            response += "【改善提案】\n"
+                            for i, suggestion in enumerate(suggestions[:3], 1):
+                                response += f"{i}. {suggestion}\n"
+
+                        final_message_parts.append(response)
+                        task_summaries["structure_analysis"] = "完了"
+
+                    elif task_type == "suggest_restructure":
+                        # 構造改善提案結果
+                        response = "論文構造の改善提案が完了しました。\n\n"
+
+                        # suggestionオブジェクトから情報を取得
+                        suggestion = result.get("suggestion", {})
+                        target_format = suggestion.get("target_format", result.get("target_format", "不明"))
+                        rationale = suggestion.get("rationale", result.get("rationale", ""))
+
+                        response += f"【推奨構造形式】\n{target_format}\n\n"
+
+                        if rationale:
+                            response += f"【推奨理由】\n{rationale}\n\n"
+
+                        # アクションプラン
+                        actions = suggestion.get("actions", result.get("actions", []))
+                        if actions:
+                            response += "【実行アクション】\n"
+                            for i, action in enumerate(actions, 1):
+                                action_type = action.get("action_type", action.get("type", "不明"))
+                                details = action.get("details", action.get("description", ""))
+                                response += f"{i}. {action_type}: {details}\n"
+                            response += "\n"
+
+                        # 期待される効果
+                        benefits = suggestion.get("expected_benefits", result.get("expected_benefits", []))
+                        if benefits:
+                            response += "【期待される効果】\n"
+                            for i, benefit in enumerate(benefits[:3], 1):
+                                response += f"{i}. {benefit}\n"
+
+                        final_message_parts.append(response)
+                        task_summaries["structure_optimization"] = "完了"
+
+                    elif task_type == "split_section":
+                        # セクション分割結果
+                        response = "✅ セクション分割タスクが完了しました！\n\n"
+
+                        original_section_id = result.get("original_section_id", "")
+                        new_sections = result.get("new_sections", [])
+                        split_count = result.get("split_count", len(new_sections))
+
+                        response += f"📐 実行内容:\n"
+                        response += f"- 分割数: {split_count}個\n"
+                        response += f"- 元セクションID: {original_section_id[:8]}...\n\n"
+
+                        response += f"📝 新しいセクション:\n"
+                        for idx, section in enumerate(new_sections, 1):
+                            title = section.get("title", "不明")
+                            word_count = section.get("word_count", 0)
+                            response += f"{idx}. {title} ({word_count}語)\n"
+
+                        final_message_parts.append(response)
+                        task_summaries["structure_split"] = "完了"
+
+                    elif task_type == "merge_sections":
+                        # セクション統合結果
+                        response = "✅ セクション統合タスクが完了しました！\n\n"
+
+                        merged_section = result.get("merged_section", {})
+                        deleted_ids = result.get("deleted_section_ids", [])
+
+                        response += f"📐 実行内容:\n"
+                        response += f"- 統合後タイトル: {merged_section.get('title', '不明')}\n"
+                        response += f"- 統合後語数: {merged_section.get('word_count', 0)}語\n"
+                        response += f"- 削除セクション数: {len(deleted_ids)}個\n"
+
+                        final_message_parts.append(response)
+                        task_summaries["structure_merge"] = "完了"
+
+                    elif task_type == "restructure_with_content":
+                        # 包括的再構成結果
+                        response = "✅ 論文構造の包括的再構成が完了しました！\n\n"
+
+                        target_format = result.get("target_format", "不明")
+                        operations_count = result.get("operations_count", 0)
+                        execution_results = result.get("execution_results", [])
+                        restructure_plan = result.get("restructure_plan", {})
+
+                        response += f"📐 実行内容:\n"
+                        response += f"- 目標フォーマット: {target_format}\n"
+                        response += f"- 実行操作数: {operations_count}個\n\n"
+
+                        if execution_results:
+                            response += f"🔧 実行した操作:\n"
+                            op_types = {}
+                            for result_item in execution_results:
+                                op_type = result_item.get("type", "unknown")
+                                op_types[op_type] = op_types.get(op_type, 0) + 1
+
+                            for op_type, count in op_types.items():
+                                type_names = {
+                                    "split": "セクション分割",
+                                    "merge": "セクション統合",
+                                    "rename": "タイトル変更",
+                                    "reorder": "セクション並び替え"
+                                }
+                                type_name = type_names.get(op_type, op_type)
+                                response += f"- {type_name}: {count}回\n"
+
+                        # 計画の理由
+                        rationale = restructure_plan.get("rationale", "")
+                        if rationale:
+                            response += f"\n📝 再構成の理由:\n{rationale[:200]}"
+                            if len(rationale) > 200:
+                                response += "..."
+
+                        final_message_parts.append(response)
+                        task_summaries["structure_restructure"] = "完了"
+
+                    else:
+                        # その他の構造タスク
+                        response = f"論文構造の{task_type}が完了しました。\n"
+                        final_message_parts.append(response)
+                        task_summaries["structure"] = "完了"
+
+            elif agent_name == "EditingAgent":
+                # コンテンツ編集・加筆結果の処理
+                logger.info(f"[ResponseFormatter] EditingAgent block reached. result.get('success'): {result.get('success')}, type: {type(result.get('success'))}")
+                if result.get("success", False):
+                    logger.info(f"[ResponseFormatter] EditingAgent success condition passed")
+                    response = "✅ コンテンツ編集タスクが完了しました！\n\n"
+
+                    # 編集結果の取得
+                    enhancement_results = result.get("enhancement_results", [])
+                    sections_enhanced = result.get("sections_enhanced", len(enhancement_results))
+                    total_content_added = result.get("total_content_added", 0)
+                    enhancement_type = result.get("enhancement_type", "comprehensive")
+
+                    response += f"🖊️ 実行内容:\n"
+                    response += f"- 編集タイプ: {enhancement_type}\n"
+                    response += f"- 編集セクション数: {sections_enhanced}個\n"
+                    response += f"- 追加文字数: {total_content_added}文字\n\n"
+
+                    # セクション別の編集結果
+                    if enhancement_results:
+                        response += "📝 編集結果:\n"
+                        for idx, enhancement in enumerate(enhancement_results[:3], 1):
+                            section_title = enhancement.get("section_title", "不明")
+                            completeness_score = enhancement.get("completeness_score", 0)
+                            enhancement_quality = enhancement.get("enhancement_quality", "moderate")
+
+                            response += f"{idx}. {section_title}\n"
+                            response += f"   - 品質: {enhancement_quality}\n"
+                            response += f"   - 完成度: {completeness_score}/10\n"
+
+                            # 追加された要素
+                            added_elements = enhancement.get("added_elements", [])
+                            if added_elements:
+                                response += f"   - 追加内容: {', '.join(added_elements[:3])}\n"
+                            response += "\n"
+
+                        # 編集後のコンテンツ表示（最初のセクションのみ）
+                        first_enhancement = enhancement_results[0]
+                        enhanced_content = first_enhancement.get("enhanced_content", "")
+
+                        # enhanced_contentがJSON文字列の場合はパース
+                        if isinstance(enhanced_content, str) and enhanced_content.startswith("{"):
+                            try:
+                                import json
+                                enhanced_data = json.loads(enhanced_content)
+                                enhanced_content = enhanced_data.get("enhanced_content", "")
+                            except:
+                                pass
+
+                        if enhanced_content and len(enhanced_content) > 100:
+                            response += "📖 編集後のコンテンツ（冒頭部分）:\n\n"
+                            response += enhanced_content[:500] + "...\n\n"
+                            response += "（全文は論文に保存されました）"
+                    else:
+                        response += "編集が正常に完了しました。"
+
+                    final_message_parts.append(response)
+                    task_summaries["editing"] = "完了"
+
+            elif agent_name == "DiscoveryAgent":
+                # 研究資料検索・発見結果の処理
+                if result.get("success", True):  # DiscoveryAgentはデフォルトでsuccess
+                    response = "✅ ChromaDB資料検索タスクが完了しました！\n\n"
+
+                    # 検索情報
+                    query = result.get("query", "")
+                    search_type = result.get("search_type", "semantic")
+                    total_results = result.get("total_results", 0)
+
+                    response += f"🔍 実行内容:\n"
+                    response += f"- 検索クエリ: 「{query[:50]}...」\n" if len(query) > 50 else f"- 検索クエリ: 「{query}」\n"
+                    response += f"- 検索方式: {search_type}\n"
+                    response += f"- 発見資料数: {total_results}件\n\n"
+
+                    # 検索結果サマリー
+                    summary = result.get("summary", "")
+                    if summary:
+                        response += f"📊 検索結果サマリー:\n{summary}\n\n"
+
+                    # 上位結果の表示
+                    results = result.get("results", [])
+                    if results:
+                        response += "📚 発見した関連資料（上位3件）:\n\n"
+                        for idx, item in enumerate(results[:3], 1):
+                            rank = item.get("rank", idx)
+                            relevance_score = item.get("relevance_score", 0)
+                            content = item.get("content", "")
+                            metadata = item.get("metadata", {})
+                            filename = metadata.get("filename", "不明")
+
+                            response += f"{rank}. 関連度: {relevance_score:.1%}\n"
+                            response += f"   出典: {filename}\n"
+                            if content:
+                                content_preview = content[:150].replace('\n', ' ')
+                                response += f"   内容: {content_preview}...\n"
+                            response += "\n"
+
+                        if total_results > 3:
+                            response += f"（他 {total_results - 3}件の関連資料が見つかりました）"
+                    else:
+                        response += "💡 該当する資料が見つかりませんでした。検索条件を変更してお試しください。"
+
+                    final_message_parts.append(response)
+                    task_summaries["discovery"] = "完了"
+
+            elif agent_name == "StrategyAgent":
+                # 研究戦略立案結果の処理
+                if result.get("success", False):
+                    response = "✅ 研究戦略立案タスクが完了しました！\n\n"
+
+                    task_type = result.get("task_type", "strategy")
+                    strategy_result = result.get("strategy_result", {})
+
+                    # 戦略プラン
+                    strategy_plan = strategy_result.get("strategy_plan", result.get("strategy_plan", ""))
+                    if strategy_plan:
+                        response += "📋 戦略プラン:\n"
+                        if len(strategy_plan) > 300:
+                            response += f"{strategy_plan[:300]}...\n\n"
+                        else:
+                            response += f"{strategy_plan}\n\n"
+
+                    # 戦略的推奨事項
+                    recommendations = strategy_result.get("strategic_recommendations", result.get("strategic_recommendations", []))
+                    if recommendations:
+                        response += "💡 戦略的推奨事項:\n"
+                        for i, rec in enumerate(recommendations[:5], 1):
+                            response += f"{i}. {rec}\n"
+                        response += "\n"
+
+                    # リスク評価
+                    risk_assessment = strategy_result.get("risk_assessment", result.get("risk_assessment", {}))
+                    if risk_assessment:
+                        risk_level = risk_assessment.get("risk_level", "中")
+                        response += f"⚠️ リスクレベル: {risk_level}\n"
+
+                        mitigations = risk_assessment.get("mitigation_strategies", [])
+                        if mitigations:
+                            response += "\n軽減戦略:\n"
+                            for i, mitigation in enumerate(mitigations[:3], 1):
+                                response += f"{i}. {mitigation}\n"
+
+                    final_message_parts.append(response)
+                    task_summaries["strategy"] = "完了"
+
+            elif agent_name == "OptimizationAgent":
+                # 研究最適化結果の処理
+                if result.get("success", False):
+                    response = "✅ 研究最適化タスクが完了しました！\n\n"
+
+                    task_type = result.get("task_type", "optimization")
+                    optimization_result = result.get("optimization_result", {})
+
+                    # 最適化提案
+                    proposals = optimization_result.get("optimization_proposals", result.get("optimization_proposals", []))
+                    if proposals:
+                        response += "🎯 最適化提案:\n"
+                        for i, proposal in enumerate(proposals[:5], 1):
+                            response += f"{i}. {proposal}\n"
+                        response += "\n"
+
+                    # 効率化指標
+                    metrics = optimization_result.get("efficiency_metrics", result.get("efficiency_metrics", {}))
+                    if metrics:
+                        response += "📊 効率化指標:\n"
+                        if "time_savings" in metrics:
+                            response += f"- 時間短縮: {metrics['time_savings']}\n"
+                        if "cost_reduction" in metrics:
+                            response += f"- コスト削減: {metrics['cost_reduction']}\n"
+                        if "quality_improvement" in metrics:
+                            response += f"- 品質向上: {metrics['quality_improvement']}\n"
+                        response += "\n"
+
+                    # 実装優先度
+                    priority_list = optimization_result.get("implementation_priority", result.get("implementation_priority", []))
+                    if priority_list:
+                        response += "📌 実装優先度:\n"
+                        for i, item in enumerate(priority_list[:5], 1):
+                            response += f"{i}. {item}\n"
+
+                    final_message_parts.append(response)
+                    task_summaries["optimization"] = "完了"
+
         # 最終メッセージの組み立て
+        logger.info(f"[ResponseFormatter] Final message_parts count: {len(final_message_parts)}")
+        for idx, part in enumerate(final_message_parts):
+            logger.info(f"[ResponseFormatter] Part {idx} length: {len(part)}, preview: {part[:100] if len(part) > 100 else part}")
+
         if not final_message_parts:
             final_message = "処理を実行しましたが、結果を取得できませんでした。"
         elif len(final_message_parts) == 1:

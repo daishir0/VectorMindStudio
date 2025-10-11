@@ -23,6 +23,7 @@ from app.domain.entities.user import User
 from app.api.deps.auth import get_current_active_user
 from app.infrastructure.repositories.paper_repository import PaperRepository
 from app.services.research_discussion_service_v3 import ResearchDiscussionServiceV3
+from app.services.agents.base_agent import AgentStatus
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

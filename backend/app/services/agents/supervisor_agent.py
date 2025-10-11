@@ -152,21 +152,44 @@ class SupervisorAgent(BaseAgent):
 ユーザーの要求を深く理解し、最適なタスク実行戦略を決定します。
 
 利用可能なエージェント:
-1. section_query: 既存セクションの検索・参照・内容取得
-2. writer: 新しいコンテンツの生成・文章作成  
-3. summary: 要約・概要作成
-4. outline: 論文構造・アウトライン管理
-5. logic_validator: 論理的整合性・品質チェック
+1. discovery: ChromaDB検索・研究ギャップ発見・関連研究調査 【重要】
+2. writer: 新しいコンテンツの生成・文章作成
+3. section_query: 既存セクションの検索・参照・内容取得
+4. summary: 要約・概要作成
+5. outline: 論文構造・アウトライン管理
+6. analysis: 研究論文の深度分析・批判的評価・構造解析
+7. editing: 研究論文の編集・改善・文章品質向上
+8. quality: 研究論文の品質評価・保証・学術基準チェック
+9. generation: 新規コンテンツ生成・セクション作成・図表生成
+10. strategy: 研究戦略立案・論証戦略・差別化戦略
+11. optimization: 研究効率・品質・リソース最適化
+12. logic_validator: 論理的整合性・品質チェック
+13. structure: 論文構造の最適化・IMRAD形式等への変換・セクション並び替え 【重要】
+
+【重要な判断基準】
+- ユーザーが「ChromaDBから検索」「資料を検索」「関連研究」等を要求した場合は、必ずdiscoveryエージェントを使用してください
+- 新規コンテンツ作成時も、まずdiscoveryで関連情報を検索してからwriterで執筆するのが望ましいです
+- ユーザーが具体的な人物名・概念・テーマを指定した場合は、discoveryで資料検索してから執筆してください
+
+【Intent Type の判断基準】
+1. query_existing: 「教えて」「見せて」「内容は？」など既存情報への質問
+2. create_new: 「作って」「執筆して」など完全に新しいセクションの作成
+3. modify_existing: 「加筆」「詳しく」「さらに」「追加」「改善」など既存コンテンツの修正・拡充 【重要】
+4. analyze_structure: 「分析」「問題点」「チェック」など論文構造の評価
+5. search_and_create: ChromaDB検索が必要で、かつ新規セクション作成の場合
+6. restructure: 「IMRAD形式」「構造を整理」「章節を並び替え」など論文構造の最適化 【重要】
+7. general_help: その他の一般的な質問・サポート
 
 あなたの役割:
 - ユーザーの真の意図を理解する
+- ChromaDB検索が必要かを判断する（重要！）
 - 既存の情報を活用すべきか、新規作成すべきかを判断
 - 最適なエージェントとタスク順序を決定
 - 品質とコンテキストを重視した判断
 
 回答は以下のJSON形式で返してください:
 {
-    "intent_type": "query_existing|create_new|modify_existing|analyze_structure|general_help",
+    "intent_type": "query_existing|create_new|modify_existing|analyze_structure|search_and_create|restructure|general_help",
     "confidence": 0.0-1.0,
     "target_section": "セクション名またはnull",
     "primary_task": "主要タスクの説明",
@@ -317,6 +340,37 @@ class SupervisorAgent(BaseAgent):
                     "priority": "high"
                 })
             
+            elif intent_type == "search_and_create" or (intent_type == "create_new" and "discovery" in recommended_agents):
+                # ChromaDB検索 + 新規作成のワークフロー
+                user_message = params.get("user_message", "")
+
+                # 1. まずDiscoveryAgentでChromatDB検索
+                tasks.append({
+                    "agent": "discovery",
+                    "task_type": "search_chromadb",
+                    "description": f"ChromaDBから「{user_message[:50]}...」に関連する資料を検索",
+                    "parameters": {
+                        "paper_id": paper_id,
+                        "query": user_message,
+                        "search_type": "semantic",
+                        "max_results": 10
+                    },
+                    "priority": "high"
+                })
+
+                # 2. 検索結果をもとにWriterAgentがコンテンツ生成
+                tasks.append({
+                    "agent": "writer",
+                    "task_type": "generate_draft",
+                    "description": f"セクション「{target_section or '新規セクション'}」のコンテンツを生成（ChromaDB検索結果を活用）",
+                    "parameters": {
+                        "section_title": target_section or "新規セクション",
+                        "paper_id": paper_id,
+                        "requirements": user_message  # ユーザーの具体的な要求を渡す
+                    },
+                    "priority": "medium"
+                })
+
             elif intent_type == "create_new":
                 if "outline" in recommended_agents:
                     tasks.append({
@@ -330,8 +384,9 @@ class SupervisorAgent(BaseAgent):
                         },
                         "priority": "high"
                     })
-                
+
                 if "writer" in recommended_agents:
+                    user_message = params.get("user_message", "")
                     tasks.append({
                         "agent": "writer",
                         "task_type": "generate_draft",
@@ -339,7 +394,7 @@ class SupervisorAgent(BaseAgent):
                         "parameters": {
                             "section_title": target_section or "新しいセクション",
                             "paper_id": paper_id,
-                            "requirements": "学術的で論理的な内容"
+                            "requirements": user_message if user_message else "学術的で論理的な内容"
                         },
                         "priority": "medium"
                     })
@@ -372,6 +427,89 @@ class SupervisorAgent(BaseAgent):
                     "priority": "medium"
                 })
             
+            elif intent_type == "modify_existing":
+                # 既存コンテンツの修正・加筆・改善の場合
+                user_message = params.get("user_message", "")
+
+                # ユーザーが具体的な人物名・概念・テーマに言及している場合、ChromaDB検索を先行
+                if any(keyword in user_message for keyword in ["戸田城聖", "思想", "エピソード", "詳しく", "加筆", "追加", "について"]):
+                    tasks.append({
+                        "agent": "discovery",
+                        "task_type": "search_chromadb",
+                        "description": f"ChromaDBから「{user_message[:50]}...」に関連する資料を検索",
+                        "parameters": {
+                            "paper_id": paper_id,
+                            "query": user_message,
+                            "search_type": "semantic",
+                            "max_results": 10
+                        },
+                        "priority": "high"
+                    })
+
+                # Editingエージェントで既存コンテンツを改善
+                tasks.append({
+                    "agent": "editing",
+                    "task_type": "content_enhancement",
+                    "description": f"既存コンテンツを「{user_message[:50]}...」に基づいて改善",
+                    "parameters": {
+                        "paper_id": paper_id,
+                        "target_section": target_section,
+                        "requirements": user_message,
+                        "modification_type": "expand"  # expand, refine, clarify等
+                    },
+                    "priority": "medium"
+                })
+
+            elif intent_type == "restructure":
+                # 論文構造の最適化の場合
+                user_message = params.get("user_message", "")
+
+                # 事前チェック: セクション数を確認
+                sections = []
+                if paper_id and self.repository:
+                    sections = await self.repository.get_sections_by_paper(paper_id)
+
+                if len(sections) == 0:
+                    # セクションが0個の場合は、ユーザーフレンドリーなメッセージを返す
+                    # 構造最適化はセクションがある場合にのみ有効
+                    # 特別なタスクとして、メッセージのみを返すタスクを作成
+                    tasks.append({
+                        "agent": "summary",
+                        "task_type": "create_paper_summary",
+                        "description": "空の論文への適切なガイダンスを提供",
+                        "parameters": {
+                            "paper_id": paper_id,
+                            "summary_type": "empty_paper_guidance",
+                            "custom_message": "現在、論文にはまだセクションがありません。\n\n論文構造を整理・最適化するには、まず以下のいずれかの方法でコンテンツを作成してください：\n\n1. **新しいセクションを作成する**\n   例：「Introductionセクションを作成して」\n\n2. **具体的なテーマでコンテンツを生成する**\n   例：「〇〇について書いて」\n\n3. **アウトラインから始める**\n   例：「〇〇についての論文アウトラインを作成して」\n\nコンテンツが作成された後、構造の最適化やIMRAD形式への変換などをサポートいたします。"
+                        },
+                        "priority": "high"
+                    })
+                else:
+                    # セクションが1個以上ある場合のみ、StructureAgentで構造最適化
+                    # StructureAgentで構造分析
+                    tasks.append({
+                        "agent": "structure",
+                        "task_type": "analyze_structure",
+                        "description": "現在の論文構造を分析",
+                        "parameters": {
+                            "paper_id": paper_id
+                        },
+                        "priority": "high"
+                    })
+
+                    # StructureAgentで構造改善提案
+                    tasks.append({
+                        "agent": "structure",
+                        "task_type": "suggest_restructure",
+                        "description": f"「{user_message[:50]}...」に基づく構造改善を提案",
+                        "parameters": {
+                            "paper_id": paper_id,
+                            "requirements": user_message,
+                            "target_format": self._extract_format_from_message(user_message)
+                        },
+                        "priority": "high"
+                    })
+
             elif intent_type == "general_help":
                 tasks.append({
                     "agent": "summary",
@@ -403,3 +541,20 @@ class SupervisorAgent(BaseAgent):
         except Exception as e:
             logger.error(f"[SupervisorAgent] ワークフロープランニングエラー: {e}")
             raise AgentExecutionError(f"ワークフロープランニングに失敗しました: {e}")
+
+    def _extract_format_from_message(self, message: str) -> Optional[str]:
+        """メッセージから目標フォーマットを抽出"""
+        message_lower = message.lower()
+
+        if "起承転結" in message or "きしょうてんけつ" in message:
+            return "kishoutenketsu"
+        elif "imrad" in message_lower or ("introduction" in message_lower and "methods" in message_lower):
+            return "imrad"
+        elif "時系列" in message or "chronological" in message_lower:
+            return "chronological"
+        elif "問題解決" in message or "problem" in message_lower:
+            return "problem_solution"
+        elif "主題" in message or "thematic" in message_lower:
+            return "thematic"
+        else:
+            return None
