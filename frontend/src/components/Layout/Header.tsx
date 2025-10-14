@@ -1,9 +1,13 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { User, LogOut, Search, Bell } from 'lucide-react';
+import { User, LogOut, Search, Bell, Menu } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
-const Header: React.FC = () => {
+interface HeaderProps {
+  onMenuClick?: () => void;
+}
+
+const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
@@ -14,18 +18,30 @@ const Header: React.FC = () => {
 
   return (
     <header className="fixed top-0 left-0 right-0 bg-white border-b border-gray-200 z-50">
-      <div className="px-6 h-16 flex items-center justify-between">
-        {/* ロゴ */}
-        <Link to="/" className="flex items-center space-x-3">
-          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-            <span className="text-white font-bold text-sm">VM</span>
-          </div>
-          <h1 className="text-xl font-bold text-gray-900">VectorMindStudio</h1>
-        </Link>
+      <div className="px-4 md:px-6 h-16 flex items-center justify-between">
+        {/* モバイル: ハンバーガーメニュー + ロゴ */}
+        <div className="flex items-center space-x-3">
+          {/* ハンバーガーメニュー（モバイルのみ） */}
+          <button
+            onClick={onMenuClick}
+            className="md:hidden p-2 -ml-2 text-gray-600 hover:text-gray-900 rounded-lg hover:bg-gray-100 transition-colors"
+            aria-label="メニューを開く"
+          >
+            <Menu className="w-6 h-6" />
+          </button>
 
-        {/* 検索バー */}
-        <div className="flex-1 max-w-lg mx-8">
-          <div className="relative">
+          {/* ロゴ */}
+          <Link to="/" className="flex items-center space-x-3">
+            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+              <span className="text-white font-bold text-sm">VM</span>
+            </div>
+            <h1 className="hidden sm:block text-xl font-bold text-gray-900">VectorMindStudio</h1>
+          </Link>
+        </div>
+
+        {/* 検索バー（デスクトップのみ） */}
+        <div className="hidden md:flex flex-1 max-w-lg mx-8">
+          <div className="relative w-full">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
             <input
               type="text"
@@ -36,7 +52,7 @@ const Header: React.FC = () => {
         </div>
 
         {/* 右側のメニュー */}
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-2 md:space-x-4">
           {/* 通知ベル */}
           <button className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100">
             <Bell className="w-5 h-5" />
