@@ -341,3 +341,235 @@ export interface SearchResult {
   filename?: string;
   upload_id?: string;
 }
+
+// Agent Management Types
+export enum AgentCategory {
+  WRITING = 'writing',
+  QUALITY = 'quality',
+  ANALYSIS = 'analysis',
+  SEARCH = 'search',
+  CUSTOM = 'custom'
+}
+
+export enum ExecutorType {
+  CODE_BASED = 'code_based',
+  LLM_BASED = 'llm_based'
+}
+
+export enum ResponseFormat {
+  TEXT = 'text',
+  JSON = 'json',
+  MARKDOWN = 'markdown'
+}
+
+export enum WakeWordMatchType {
+  EXACT = 'exact',
+  SEMANTIC = 'semantic',
+  REGEX = 'regex'
+}
+
+export enum PaperType {
+  MEDICAL = 'medical',
+  ENGINEERING = 'engineering',
+  HUMANITIES = 'humanities',
+  GENERAL = 'general'
+}
+
+export enum ExecutionStatus {
+  SUCCESS = 'success',
+  FAILURE = 'failure',
+  TIMEOUT = 'timeout',
+  ERROR = 'error'
+}
+
+export interface WakeWord {
+  id: string;
+  agent_id: string;
+  keyword: string;
+  match_type: WakeWordMatchType;
+  priority: number;
+  is_active: boolean;
+  semantic_weight?: number;
+  min_similarity_score?: number;
+  usage_count: number;
+  last_triggered_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WakeWordCreate {
+  keyword: string;
+  match_type: WakeWordMatchType;
+  priority?: number;
+  is_active?: boolean;
+  semantic_weight?: number;
+  min_similarity_score?: number;
+}
+
+export interface Capability {
+  id: string;
+  agent_id: string;
+  task_type: string;
+  description: string;
+  best_for?: string[];
+  supported_task_types: string[];
+  task_examples?: string[];
+  average_execution_time?: number;
+  success_rate?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CapabilityCreate {
+  task_type: string;
+  description?: string;
+  best_for?: string[];
+  task_examples?: string[];
+}
+
+export interface Agent {
+  id: string;
+  name: string;
+  display_name: string;
+  description: string;
+  category: AgentCategory;
+  is_active: boolean;
+  is_system: boolean;
+  is_deletable: boolean;
+  priority: number;
+  executor_type: ExecutorType;
+  class_path?: string;
+  llm_model?: string;
+  max_retries: number;
+  timeout_seconds: number;
+  system_prompt: string;
+  user_prompt_template: string;
+  response_format?: ResponseFormat;
+  tags?: string[];
+  agent_metadata?: Record<string, any>;
+  created_by?: string;
+  user_id?: string;
+  created_at: string;
+  updated_at: string;
+  wake_words?: WakeWord[];
+  capabilities?: Capability[];
+}
+
+export interface AgentListItem {
+  id: string;
+  name: string;
+  display_name: string;
+  description: string;
+  category: AgentCategory;
+  is_active: boolean;
+  is_system: boolean;
+  executor_type: ExecutorType;
+  priority: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgentCreate {
+  name: string;
+  display_name: string;
+  description: string;
+  category: AgentCategory;
+  priority?: number;
+  executor_type: ExecutorType;
+  class_path?: string;
+  llm_model?: string;
+  max_retries?: number;
+  timeout_seconds?: number;
+  system_prompt: string;
+  user_prompt_template: string;
+  response_format?: ResponseFormat;
+  tags?: string[];
+  agent_metadata?: Record<string, any>;
+  wake_words?: WakeWordCreate[];
+  capabilities?: CapabilityCreate[];
+}
+
+export interface AgentUpdate {
+  display_name?: string;
+  description?: string;
+  category?: AgentCategory;
+  is_active?: boolean;
+  priority?: number;
+  executor_type?: ExecutorType;
+  llm_model?: string;
+  max_retries?: number;
+  timeout_seconds?: number;
+  system_prompt?: string;
+  user_prompt_template?: string;
+  response_format?: ResponseFormat;
+  tags?: string[];
+  agent_metadata?: Record<string, any>;
+  wake_words?: WakeWordCreate[];
+  capabilities?: CapabilityCreate[];
+}
+
+export interface AgentStatistics {
+  total_agents: number;
+  active_agents: number;
+  system_agents: number;
+  custom_agents: number;
+  agents_by_category: Record<string, number>;
+  agents_by_executor_type: Record<string, number>;
+}
+
+export interface AgentExecutionStats {
+  agent_id: string;
+  agent_name: string;
+  total_executions: number;
+  success_count: number;
+  failure_count: number;
+  avg_execution_time_ms: number;
+  last_executed_at?: string;
+}
+
+// Agent Profile Types
+export interface AgentProfile {
+  id: string;
+  name: string;
+  description?: string;
+  paper_type: PaperType;
+  is_default: boolean;
+  user_id?: string;
+  created_at: string;
+  updated_at: string;
+  settings: AgentProfileSetting[];
+}
+
+export interface AgentProfileSetting {
+  id: string;
+  profile_id: string;
+  agent_id: string;
+  is_enabled: boolean;
+  priority_override?: number;
+  wake_words_override?: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgentProfileCreate {
+  name: string;
+  description?: string;
+  paper_type: PaperType;
+  is_default?: boolean;
+  settings?: AgentProfileSettingCreate[];
+}
+
+export interface AgentProfileUpdate {
+  name?: string;
+  description?: string;
+  paper_type?: PaperType;
+  is_default?: boolean;
+  settings?: AgentProfileSettingCreate[];
+}
+
+export interface AgentProfileSettingCreate {
+  agent_id: string;
+  is_enabled: boolean;
+  priority_override?: number;
+  wake_words_override?: string[];
+}

@@ -9,6 +9,7 @@ import json
 from .base_agent import BaseAgent, AgentTask, AgentResult, AgentExecutionError, AgentValidationError
 from app.infrastructure.external.openai_client import openai_client
 from app.infrastructure.repositories.paper_repository import PaperRepository
+from app.infrastructure.repositories.agent_repository import AgentRepository
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -32,7 +33,7 @@ class SupervisorAgent(BaseAgent):
     - エージェント能力のメタ知識活用
     """
     
-    def __init__(self, session=None):
+    def __init__(self, session=None, user_id=None):
         super().__init__(
             name="SupervisorAgent",
             description="LLMベースの高次タスク推論・エージェント管理を行うスーパーバイザー",
@@ -40,71 +41,13 @@ class SupervisorAgent(BaseAgent):
             timeout=settings.AI_AGENT_TIMEOUT_SECONDS
         )
         self.session = session
+        self.user_id = user_id
         self.repository = PaperRepository(session) if session else None
-        
-        # エージェント能力のメタ知識
-        self.agent_capabilities = {
-            "section_query": {
-                "description": "既存セクションの検索・参照・内容取得",
-                "best_for": ["セクション内容の質問", "特定セクションの検索", "既存情報の参照"],
-                "keywords": ["教えて", "について", "内容", "見せて", "Abstract", "Introduction", "Methods", "Results", "Discussion"]
-            },
-            "writer": {
-                "description": "新しいコンテンツの生成・文章作成",
-                "best_for": ["新規セクション作成", "文章生成", "コンテンツ執筆"],
-                "keywords": ["作って", "書いて", "生成", "執筆", "ドラフト"]
-            },
-            "summary": {
-                "description": "要約・概要作成",
-                "best_for": ["要約作成", "論文全体のまとめ", "概要生成"],
-                "keywords": ["要約", "まとめ", "概要", "サマリー"]
-            },
-            "outline": {
-                "description": "論文構造・アウトライン管理",
-                "best_for": ["構造設計", "セクション管理", "アウトライン作成"],
-                "keywords": ["構造", "アウトライン", "セクション", "章立て"]
-            },
-            "logic_validator": {
-                "description": "論理的整合性・品質チェック",
-                "best_for": ["論理チェック", "整合性検証", "品質評価"],
-                "keywords": ["チェック", "確認", "検証", "品質"]
-            },
-            "analysis": {
-                "description": "研究論文の深度分析・批判的評価・構造解析",
-                "best_for": ["批判的分析", "構造分析", "整合性チェック", "弱点特定", "比較分析"],
-                "keywords": ["分析", "解析", "評価", "批判", "弱点", "問題", "改善", "レビュー", "査読"]
-            },
-            "editing": {
-                "description": "研究論文の編集・改善・文章品質向上",
-                "best_for": ["文体編集", "内容拡充", "可読性向上", "文章改善", "校正"],
-                "keywords": ["編集", "改善", "修正", "校正", "文体", "読みやすく", "明確に", "洗練"]
-            },
-            "quality": {
-                "description": "研究論文の品質評価・保証・学術基準チェック",
-                "best_for": ["品質評価", "学術基準チェック", "倫理検証", "公開準備度評価", "査読準備"],
-                "keywords": ["品質", "評価", "基準", "倫理", "学術", "公開", "準備", "査読", "適合性"]
-            },
-            "discovery": {
-                "description": "研究ギャップ発見・新しいテーマ探索・関連研究調査",
-                "best_for": ["ギャップ分析", "冗長性検出", "バランス分析", "新規テーマ発見", "関連研究探索"],
-                "keywords": ["ギャップ", "不足", "足りない", "探索", "発見", "新しい", "関連", "競合", "類似", "重複"]
-            },
-            "generation": {
-                "description": "新規コンテンツ生成・セクション作成・図表生成",
-                "best_for": ["セクション生成", "内容拡充", "アウトライン生成", "引用生成", "図表生成", "結論生成"],
-                "keywords": ["生成", "作成", "執筆", "書いて", "作って", "図", "表", "引用", "例", "結論", "まとめ"]
-            },
-            "strategy": {
-                "description": "研究戦略立案・論証戦略・差別化戦略・影響力最大化",
-                "best_for": ["研究戦略", "論証戦略", "差別化戦略", "リスク軽減", "影響力最大化", "公開戦略"],
-                "keywords": ["戦略", "計画", "アプローチ", "方針", "差別化", "競争力", "影響", "リスク", "公開"]
-            },
-            "optimization": {
-                "description": "研究効率・品質・リソース・時間・影響・コスト最適化",
-                "best_for": ["効率最適化", "品質最適化", "リソース最適化", "時間最適化", "影響最適化", "コスト最適化"],
-                "keywords": ["最適化", "効率", "改善", "向上", "短縮", "削減", "節約", "パフォーマンス", "リソース"]
-            }
-        }
+        self.agent_repository = AgentRepository(session) if session else None
+
+        # エージェント能力のメタ知識（DBから動的に読み込み）
+        self.agent_capabilities = {}
+        self._agent_capabilities_loaded = False
     
     def _get_supported_task_types(self) -> List[str]:
         return [
@@ -114,6 +57,68 @@ class SupervisorAgent(BaseAgent):
             "supervise_execution",     # 実行監督
             "quality_control"          # 品質管理
         ]
+
+    async def _load_agent_capabilities_from_db(self, user_id: Optional[str] = None):
+        """DBからエージェント能力のメタ知識を動的に読み込み"""
+        if self._agent_capabilities_loaded:
+            return
+
+        if not self.agent_repository:
+            logger.warning("[SupervisorAgent] AgentRepositoryが未設定のため、エージェント能力を読み込めません")
+            return
+
+        try:
+            # user_idを使用（引数優先、次にインスタンス変数）
+            effective_user_id = user_id or self.user_id
+
+            # DBからアクティブなエージェント一覧を取得
+            agents = await self.agent_repository.get_active_agents(user_id=effective_user_id)
+
+            logger.info(f"[SupervisorAgent] {len(agents)}個のアクティブエージェントを読み込みました")
+
+            # エージェント名の正規化マッピング（既存コードとの互換性維持）
+            # 例: "DiscoveryAgent" -> "discovery"
+            name_mappings = {
+                "DiscoveryAgent": "discovery",
+                "WriterAgent": "writer",
+                "SectionQueryAgent": "section_query",
+                "SummaryAgent": "summary",
+                "OutlineAgent": "outline",
+                "LogicValidatorAgent": "logic_validator",
+                "AnalysisAgent": "analysis",
+                "EditingAgent": "editing",
+                "QualityAgent": "quality",
+                "GenerationAgent": "generation",
+                "StrategyAgent": "strategy",
+                "OptimizationAgent": "optimization",
+                "StructureAgent": "structure"
+            }
+
+            for agent in agents:
+                # エージェント名を正規化
+                normalized_name = name_mappings.get(agent.name, agent.name.lower())
+
+                # wake_wordsとcapabilitiesはeager loadされている
+                wake_words = agent.wake_words if hasattr(agent, 'wake_words') else []
+                capabilities = agent.capabilities if hasattr(agent, 'capabilities') else []
+
+                # エージェント能力辞書を構築
+                self.agent_capabilities[normalized_name] = {
+                    "description": agent.description,
+                    "best_for": [cap.description for cap in capabilities] if capabilities else [],
+                    "keywords": [ww.keyword for ww in wake_words] if wake_words else [],
+                    "agent_id": agent.id,
+                    "display_name": agent.display_name,
+                    "priority": agent.priority
+                }
+
+            self._agent_capabilities_loaded = True
+            logger.info(f"[SupervisorAgent] エージェント能力メタ知識の読み込み完了: {len(self.agent_capabilities)}個")
+
+        except Exception as e:
+            logger.error(f"[SupervisorAgent] エージェント能力の読み込みエラー: {e}", exc_info=True)
+            # エラー時はフォールバック：空の辞書を使用
+            self.agent_capabilities = {}
     
     async def _execute_core(self, task: AgentTask) -> Any:
         """タスク実行"""
@@ -132,13 +137,17 @@ class SupervisorAgent(BaseAgent):
         """LLMベースの高度な意図解析"""
         user_message = params.get("user_message", "")
         paper_id = params.get("paper_id")
-        
+        user_id = params.get("user_id")
+
         if not user_message:
             raise AgentValidationError("user_message は必須です")
-        
+
         try:
+            # DBからエージェント能力を動的に読み込み
+            await self._load_agent_capabilities_from_db(user_id=user_id)
+
             logger.info(f"[SupervisorAgent] 意図解析開始: '{user_message[:50]}...'")
-            
+
             # 既存セクション情報を取得（文脈として使用）
             sections_context = ""
             if paper_id and self.repository:
@@ -146,13 +155,17 @@ class SupervisorAgent(BaseAgent):
                 if sections:
                     sections_list = [f"- {s.section_number}: {s.title}" for s in sections]
                     sections_context = f"\n\n既存セクション:\n" + "\n".join(sections_list)
-            
-            # LLMプロンプト構築
-            system_prompt = """あなたは研究論文執筆支援システムのスーパーバイザーエージェントです。
-ユーザーの要求を深く理解し、最適なタスク実行戦略を決定します。
 
-利用可能なエージェント:
-1. discovery: ChromaDB検索・研究ギャップ発見・関連研究調査 【重要】
+            # 利用可能なエージェント一覧を動的に構築
+            available_agents_text = ""
+            if self.agent_capabilities:
+                agent_list = []
+                for i, (agent_key, agent_info) in enumerate(self.agent_capabilities.items(), 1):
+                    agent_list.append(f"{i}. {agent_key}: {agent_info['description']}")
+                available_agents_text = "\n".join(agent_list)
+            else:
+                # フォールバック：基本エージェントのみ
+                available_agents_text = """1. discovery: ChromaDB検索・研究ギャップ発見・関連研究調査 【重要】
 2. writer: 新しいコンテンツの生成・文章作成
 3. section_query: 既存セクションの検索・参照・内容取得
 4. summary: 要約・概要作成
@@ -164,7 +177,14 @@ class SupervisorAgent(BaseAgent):
 10. strategy: 研究戦略立案・論証戦略・差別化戦略
 11. optimization: 研究効率・品質・リソース最適化
 12. logic_validator: 論理的整合性・品質チェック
-13. structure: 論文構造の最適化・IMRAD形式等への変換・セクション並び替え 【重要】
+13. structure: 論文構造の最適化・IMRAD形式等への変換・セクション並び替え 【重要】"""
+
+            # LLMプロンプト構築
+            system_prompt = f"""あなたは研究論文執筆支援システムのスーパーバイザーエージェントです。
+ユーザーの要求を深く理解し、最適なタスク実行戦略を決定します。
+
+利用可能なエージェント:
+{available_agents_text}
 
 【重要な判断基準】
 - ユーザーが「ChromaDBから検索」「資料を検索」「関連研究」等を要求した場合は、必ずdiscoveryエージェントを使用してください
@@ -188,7 +208,7 @@ class SupervisorAgent(BaseAgent):
 - 品質とコンテキストを重視した判断
 
 回答は以下のJSON形式で返してください:
-{
+{{
     "intent_type": "query_existing|create_new|modify_existing|analyze_structure|search_and_create|restructure|general_help",
     "confidence": 0.0-1.0,
     "target_section": "セクション名またはnull",
@@ -196,7 +216,7 @@ class SupervisorAgent(BaseAgent):
     "recommended_agents": ["エージェント名のリスト"],
     "task_sequence": ["タスクの実行順序"],
     "reasoning": "判断理由の説明"
-}"""
+}}"""
             
             user_prompt = f"""ユーザーの要求: "{user_message}"{sections_context}
 
@@ -260,7 +280,7 @@ class SupervisorAgent(BaseAgent):
     def _fallback_intent_analysis(self, user_message: str, sections_context: str) -> Dict[str, Any]:
         """フォールバック: 従来のルールベース意図解析"""
         message_lower = user_message.lower()
-        
+
         # セクション名検出
         common_sections = ["abstract", "introduction", "methods", "results", "discussion", "conclusion"]
         target_section = None
@@ -268,7 +288,22 @@ class SupervisorAgent(BaseAgent):
             if section in message_lower:
                 target_section = section.title()
                 break
-        
+
+        # ChromaDB検索 + セクション作成の判定（最優先）
+        has_search_keywords = any(keyword in message_lower for keyword in ["chromadb", "検索", "探して", "資料", "文献", "関連研究"])
+        has_create_keywords = any(keyword in message_lower for keyword in ["作って", "作成", "書いて", "生成", "執筆"])
+
+        if has_search_keywords and has_create_keywords:
+            return {
+                "intent_type": "search_and_create",
+                "confidence": 0.9,
+                "target_section": target_section,
+                "primary_task": "ChromaDBで資料検索してセクション作成",
+                "recommended_agents": ["discovery", "writer"],
+                "task_sequence": ["ChromaDB検索", "コンテンツ生成", "セクション作成"],
+                "reasoning": "ChromaDB検索とセクション作成の両方を含むため"
+            }
+
         # 意図タイプ決定
         if any(keyword in message_lower for keyword in ["教えて", "について", "見せて", "内容"]):
             if target_section:
@@ -291,7 +326,7 @@ class SupervisorAgent(BaseAgent):
                     "task_sequence": ["情報整理", "回答生成"],
                     "reasoning": "一般的な質問として解析"
                 }
-        elif any(keyword in message_lower for keyword in ["作って", "書いて", "生成"]):
+        elif has_create_keywords:
             return {
                 "intent_type": "create_new",
                 "confidence": 0.7,

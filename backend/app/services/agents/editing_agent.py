@@ -30,7 +30,7 @@ class EditingAgent(EnhancedBaseAgent):
     """
     
     def __init__(self, session=None):
-        super().__init__(session=session, timeout=25)
+        super().__init__(session=session, timeout=60)
         self.repository = PaperRepository(session) if session else None
     
     @property
@@ -492,17 +492,16 @@ class EditingAgent(EnhancedBaseAgent):
         """リトライ付きOpenAI API呼び出し"""
         max_retries = 3
         base_delay = 1.0
-        
+
         for attempt in range(max_retries):
             try:
                 logger.info(f"[EditingAgent] OpenAI API呼び出し (試行 {attempt + 1}/{max_retries})")
-                
+
                 response = await openai_client.generate_text(
-                    messages=[{"role": "user", "content": prompt}],
-                    max_tokens=max_tokens
+                    prompt=prompt
                 )
-                
-                return response
+
+                return response["content"]
                 
             except Exception as e:
                 logger.warning(f"[EditingAgent] OpenAI API呼び出し失敗 (試行 {attempt + 1}): {e}")

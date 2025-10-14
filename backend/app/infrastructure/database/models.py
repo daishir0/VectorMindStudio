@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Text, Integer, Boolean, DateTime, JSON, ForeignKey, Index, UniqueConstraint
+from sqlalchemy import Column, String, Text, Integer, Boolean, DateTime, JSON, Float, ForeignKey, Index, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -168,13 +168,16 @@ class ResearchPaperModel(Base):
     title = Column(String(500), nullable=False)
     description = Column(Text, nullable=True)
     status = Column(String(20), default="draft", nullable=False, index=True)  # draft, in_progress, completed, published
+    agent_profile_id = Column(String, ForeignKey("agent_profiles.id"), nullable=True, index=True)
+    custom_agent_settings = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-    
+
     # リレーション
     user = relationship("UserModel", back_populates="research_papers")
     sections = relationship("PaperSectionModel", back_populates="paper", cascade="all, delete-orphan")
     chat_sessions = relationship("PaperChatSessionModel", back_populates="paper", cascade="all, delete-orphan")
+    agent_profile = relationship("AgentProfileModel", back_populates="papers")
 
 
 class PaperSectionModel(Base):
@@ -256,3 +259,161 @@ class PaperChatMessageModel(Base):
     
     # リレーション
     session = relationship("PaperChatSessionModel", back_populates="messages")
+
+
+class AIAgentModel(Base):
+    """AIエージェントテーブル"""
+    __tablename__ = "ai_agents"
+
+    id = Column(String, primary_key=True)
+    name = Column(String, nullable=False, index=True)
+    display_name = Column(String, nullable=False)
+    description = Column(Text, nullable=False)
+    category = Column(String, nullable=False, server_default='custom', index=True)
+    is_active = Column(Boolean, nullable=False, server_default='1', index=True)
+    is_system = Column(Boolean, nullable=False, server_default='0')
+    priority = Column(Integer, nullable=False, server_default='10')
+    executor_type = Column(String, nullable=False, server_default='llm_based')
+    llm_model = Column(String, nullable=True, server_default='gpt-4o-mini')
+    max_retries = Column(Integer, nullable=False, server_default='3')
+    timeout_seconds = Column(Integer, nullable=False, server_default='90')
+    system_prompt = Column(Text, nullable=False)
+    user_prompt_template = Column(Text, nullable=False)
+    response_format = Column(String, nullable=True, server_default='text')
+    tags = Column(JSON, nullable=True)
+    agent_metadata = Column(JSON, nullable=True)
+    created_by = Column(String, ForeignKey("users.id"), nullable=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    class_path = Column(String, nullable=True)  # code_based用のPythonクラスパス
+    is_deletable = Column(Boolean, nullable=False, server_default='1')  # 削除可能フラグ
+
+    # リレーション
+    wake_words = relationship("AgentWakeWordModel", back_populates="agent", cascade="all, delete-orphan")
+    capabilities = relationship("AgentCapabilityModel", back_populates="agent", cascade="all, delete-orphan")
+    execution_logs = relationship("AgentExecutionLogModel", back_populates="agent", cascade="all, delete-orphan")
+    profile_settings = relationship("AgentProfileSettingModel", back_populates="agent", cascade="all, delete-orphan")
+
+
+class AgentWakeWordModel(Base):
+    """エージェント起動キーワードテーブル"""
+    __tablename__ = "agent_wake_words"
+
+    id = Column(String, primary_key=True)
+    agent_id = Column(String, ForeignKey("ai_agents.id", ondelete="CASCADE"), nullable=False, index=True)
+    keyword = Column(String, nullable=False, index=True)
+    keyword_type = Column(String, nullable=False, server_default='exact', index=True)
+    priority = Column(Integer, nullable=False, server_default='10')
+    is_active = Column(Boolean, nullable=False, server_default='1')
+    semantic_weight = Column(Float, nullable=True, server_default='1.0')
+    min_similarity_score = Column(Float, nullable=True, server_default='0.7')
+    usage_count = Column(Integer, nullable=False, server_default='0')
+    last_triggered_at = Column(DateTime, nullable=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    # リレーション
+    agent = relationship("AIAgentModel", back_populates="wake_words")
+
+    # 複合インデックス
+    __table_args__ = (
+        Index('idx_wake_words_active_priority', 'is_active', 'priority'),
+    )
+
+
+class AgentCapabilityModel(Base):
+    """エージェント能力定義テーブル"""
+    __tablename__ = "agent_capabilities"
+
+    id = Column(String, primary_key=True)
+    agent_id = Column(String, ForeignKey("ai_agents.id", ondelete="CASCADE"), nullable=False, index=True)
+    capability_type = Column(String, nullable=False, index=True)
+    description = Column(Text, nullable=False)
+    best_for = Column(JSON, nullable=True)
+    supported_task_types = Column(JSON, nullable=False)
+    task_examples = Column(JSON, nullable=True)
+    average_execution_time = Column(Integer, nullable=True)
+    success_rate = Column(Float, nullable=True, server_default='1.0')
+    user_id = Column(String, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    # リレーション
+    agent = relationship("AIAgentModel", back_populates="capabilities")
+
+
+class AgentExecutionLogModel(Base):
+    """エージェント実行ログテーブル"""
+    __tablename__ = "agent_execution_logs"
+
+    id = Column(String, primary_key=True)
+    agent_id = Column(String, ForeignKey("ai_agents.id"), nullable=False, index=True)
+    session_id = Column(String, ForeignKey("paper_chat_sessions.id"), nullable=False, index=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    triggered_by = Column(String, nullable=False, server_default='wake_word')
+    wake_word_used = Column(String, nullable=True)
+    user_message = Column(Text, nullable=False)
+    status = Column(String, nullable=False, index=True)
+    execution_time_ms = Column(Integer, nullable=False)
+    retry_count = Column(Integer, nullable=False, server_default='0')
+    result_summary = Column(Text, nullable=True)
+    error_message = Column(Text, nullable=True)
+    tokens_used = Column(Integer, nullable=True)
+    llm_calls = Column(Integer, nullable=False, server_default='1')
+    created_at = Column(DateTime, nullable=False, server_default='CURRENT_TIMESTAMP', index=True)
+
+    # リレーション
+    agent = relationship("AIAgentModel", back_populates="execution_logs")
+
+
+class AgentProfileModel(Base):
+    """エージェントプロファイルテーブル（論文タイプ別の設定）"""
+    __tablename__ = "agent_profiles"
+
+    id = Column(String, primary_key=True)
+    name = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    paper_type = Column(String, nullable=False, index=True)  # medical, engineering, humanities, general
+    is_default = Column(Boolean, nullable=False, server_default='0', index=True)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    # リレーション
+    user = relationship("UserModel")
+    settings = relationship("AgentProfileSettingModel", back_populates="profile", cascade="all, delete-orphan")
+    papers = relationship("ResearchPaperModel", back_populates="agent_profile")
+
+    # インデックス
+    __table_args__ = (
+        Index('idx_profiles_paper_type', 'paper_type'),
+        Index('idx_profiles_user', 'user_id'),
+        Index('idx_profiles_default', 'is_default'),
+    )
+
+
+class AgentProfileSettingModel(Base):
+    """プロファイル別エージェント設定テーブル"""
+    __tablename__ = "agent_profile_settings"
+
+    id = Column(String, primary_key=True)
+    profile_id = Column(String, ForeignKey("agent_profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    agent_id = Column(String, ForeignKey("ai_agents.id", ondelete="CASCADE"), nullable=False, index=True)
+    is_enabled = Column(Boolean, nullable=False, server_default='1')
+    priority_override = Column(Integer, nullable=True)  # プロファイル内での優先度上書き
+    wake_words_override = Column(JSON, nullable=True)  # ウェイクワード上書き
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    # リレーション
+    profile = relationship("AgentProfileModel", back_populates="settings")
+    agent = relationship("AIAgentModel", back_populates="profile_settings")
+
+    # インデックス
+    __table_args__ = (
+        Index('idx_profile_settings_profile', 'profile_id'),
+        Index('idx_profile_settings_agent', 'agent_id'),
+    )

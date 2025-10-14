@@ -22,7 +22,8 @@ const initialState: AuthState = {
   user: null,
   token: localStorage.getItem('access_token'),
   isAuthenticated: false,
-  isLoading: false,
+  // 起動直後は認証状態が未確定のためロード中にする
+  isLoading: true,
 };
 
 function authReducer(state: AuthState, action: AuthAction): AuthState {
@@ -56,8 +57,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // 初期化時にトークンがある場合はユーザー情報を取得
   useEffect(() => {
+    // 認証状態の判定が終わるまでローディングにする（リダイレクト競合回避）
+    dispatch({ type: 'SET_LOADING', payload: true });
+
     const token = localStorage.getItem('access_token');
-    
+
     if (token) {
       // トークンの有効性をチェック
       if (authService.isTokenExpired(token)) {
@@ -65,14 +69,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         localStorage.removeItem('access_token');
         localStorage.removeItem('refresh_token');
         dispatch({ type: 'LOGOUT' });
+        dispatch({ type: 'SET_LOADING', payload: false });
       } else {
+        // 有効なトークンがある場合はユーザー情報をロード
         loadUser();
       }
     } else {
-      // トークンがない場合は確実にisLoadingをfalseに
+      // トークンがない場合は未認証として確定
       dispatch({ type: 'SET_LOADING', payload: false });
     }
   }, []);
+
+  // トークン変更時にもユーザー情報を再読込して状態を最新化
+  useEffect(() => {
+    if (state.token) {
+      dispatch({ type: 'SET_LOADING', payload: true });
+      if (authService.isTokenExpired(state.token)) {
+        dispatch({ type: 'LOGOUT' });
+        dispatch({ type: 'SET_LOADING', payload: false });
+      } else {
+        loadUser();
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.token]);
 
   const loadUser = async () => {
     try {

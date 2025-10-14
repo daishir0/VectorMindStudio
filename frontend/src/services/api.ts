@@ -1,7 +1,7 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { ApiResponse } from '../types';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8010';
+const API_BASE_URL = 'https://vectormindstudio.path-finder.jp';
 
 class ApiClient {
   private client: AxiosInstance;

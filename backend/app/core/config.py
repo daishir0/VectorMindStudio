@@ -44,8 +44,17 @@ class Settings(BaseSettings):
     AI_AGENT_TIMEOUT_SECONDS: int = Field(90, env="AI_AGENT_TIMEOUT_SECONDS")
     
     # CORS設定
-    BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:3010", "http://localhost:3011", "http://localhost:5183"]
-    ALLOWED_HOSTS: List[str] = ["localhost", "127.0.0.1"]
+    BACKEND_CORS_ORIGINS: List[str] = [
+        "http://localhost:3010",
+        "http://localhost:3011",
+        "http://localhost:5183",
+        "https://vectormindstudio.path-finder.jp"
+    ]
+    ALLOWED_HOSTS: List[str] = [
+        "localhost",
+        "127.0.0.1",
+        "vectormindstudio.path-finder.jp"
+    ]
     
     # レート制限
     RATE_LIMIT_REQUESTS: int = 100

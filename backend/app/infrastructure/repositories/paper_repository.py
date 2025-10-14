@@ -262,16 +262,17 @@ class PaperRepository:
         self,
         paper_id: str,
         user_id: str,
-        title: str
+        title: str,
+        session_id: Optional[str] = None
     ) -> PaperChatSessionModel:
         """新しいチャットセッションを作成"""
         session = PaperChatSessionModel(
-            id=str(uuid.uuid4()),
+            id=session_id or str(uuid.uuid4()),  # session_idが指定されていれば使用、なければ自動生成
             paper_id=paper_id,
             user_id=user_id,
             title=title
         )
-        
+
         self.session.add(session)
         await self.session.commit()
         await self.session.refresh(session)

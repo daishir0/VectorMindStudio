@@ -1,6 +1,8 @@
 """
 研究ディスカッションAIサービス V3 - LLM-based Supervisor Pattern
 AAIDC準拠の真のスーパーバイザーパターン実装
+
+改修: HybridAgentLoader対応 - 動的エージェントロード
 """
 from typing import Any, Dict, List, Optional, Tuple
 import logging
@@ -15,20 +17,19 @@ from app.schemas.paper import TodoTaskInfo
 from app.services.research_discussion_service import TaskPriority
 from app.services.workflow_patterns import TaskStatus
 from app.infrastructure.repositories.paper_repository import PaperRepository
+from app.infrastructure.repositories.agent_repository import AgentRepository
 from app.infrastructure.external.openai_client import openai_client
 
-# エージェント群 - Enhanced版
-from app.services.agents import (
-    BaseAgent, AgentTask, AgentResult, AgentStatus,
-    OutlineAgent, SummaryAgent, WriterAgent, LogicValidatorAgent,
-    AnalysisAgent, EditingAgent, QualityAgent, DiscoveryAgent, GenerationAgent,
-    StrategyAgent, OptimizationAgent, StructureAgent
-)
+# エージェント基底クラスとタスク定義
+from app.services.agents import BaseAgent, AgentTask, AgentResult
 from app.services.agents.section_query_agent import SectionQueryAgent
 from app.services.agents.supervisor_agent import SupervisorAgent
 from app.services.agents.enhanced_base_agent import EnhancedBaseAgent
 from app.services.response_formatter import ResponseFormatter
 from app.services.enhanced_error_handler import enhanced_error_handler
+
+# Hybrid Agent Loader - 動的エージェントロード
+from app.services.hybrid_agent_loader import HybridAgentLoader
 
 logger = logging.getLogger(__name__)
 
@@ -48,38 +49,88 @@ class ResearchDiscussionServiceV3:
     def __init__(self, session: AsyncSession):
         self.session = session
         self.repository = PaperRepository(session)
-        
+        self.agent_repository = AgentRepository(session)
+
+        # Hybrid Agent Loader - 動的エージェントロード
+        self.agent_loader = HybridAgentLoader(
+            agent_repository=self.agent_repository,
+            llm_client=openai_client,
+            session=session
+        )
+
         # スーパーバイザーエージェント（中心的な意思決定者）
+        # Note: SupervisorAgentは特殊なエージェントのため、直接インスタンス化
         self.supervisor = SupervisorAgent(session)
-        
-        # 専門エージェント群（Enhanced版）- 全エージェントにセッション渡し
-        self.specialist_agents = {
-            "outline": OutlineAgent(session),
-            "summary": SummaryAgent(session),
-            "writer": WriterAgent(session),
-            "logic_validator": LogicValidatorAgent(session),
-            "section_query": SectionQueryAgent(session),  # Enhanced版
-            "analysis": AnalysisAgent(session),  # 研究論文分析エージェント
-            "editing": EditingAgent(session),  # 研究論文編集エージェント
-            "quality": QualityAgent(session),  # 研究論文品質保証エージェント
-            "discovery": DiscoveryAgent(session),  # Phase 2：研究発見・探索エージェント
-            "generation": GenerationAgent(session),  # Phase 2：コンテンツ生成・拡張エージェント
-            "strategy": StrategyAgent(session),  # Phase 3：研究戦略・計画エージェント
-            "optimization": OptimizationAgent(session),  # Phase 3：研究最適化・効率化エージェント
-            "structure": StructureAgent(session)  # Phase 3：論文構造最適化エージェント
-        }
-        
-        # 全エージェント統合
+
+        # 専門エージェント群の初期化フラグ
+        self._specialist_agents_loaded = False
+        self._specialist_agents = {}
+
+        # section_query_agentは特殊なエージェント（既存情報参照）のため、直接インスタンス化
+        self._specialist_agents["section_query"] = SectionQueryAgent(session)
+
+        # 全エージェント統合（初期化時は空）
         self.all_agents = {
             "supervisor": self.supervisor,
-            **self.specialist_agents
         }
-        
+
         # システム設定
         self.max_conversation_turns = 50
         self.max_parallel_agents = 3
         self.timeout_seconds = 120
-    
+
+    @property
+    def specialist_agents(self) -> Dict[str, Any]:
+        """専門エージェント群へのアクセス（遅延ロード）"""
+        if not self._specialist_agents_loaded:
+            logger.warning("[ServiceV3] specialist_agents accessed before loading. Call await _ensure_agents_loaded() first.")
+        return self._specialist_agents
+
+    async def _ensure_agents_loaded(self) -> None:
+        """専門エージェント群の遅延ロード（初回のみ実行）"""
+        if self._specialist_agents_loaded:
+            return
+
+        logger.info("[ServiceV3] 専門エージェント群を動的ロード開始")
+
+        # DBから登録済みエージェントをロード
+        agent_name_mapping = {
+            "outline": "outline",
+            "writer": "writer",
+            "logic_validator": "logic_validator",
+            "summary": "summary",
+            "reference": "reference",
+            "discovery": "discovery",
+            "analysis": "analysis",
+            "quality": "quality",
+            "editing": "editing",
+            "structure": "structure",
+            "strategy": "strategy",
+            "optimization": "optimization",
+            "generation": "generation",
+            "reference_retrieval": "reference_retrieval"
+        }
+
+        for agent_key, agent_name in agent_name_mapping.items():
+            try:
+                agent_instance = await self.agent_loader.load_agent_by_name(agent_name)
+                if agent_instance:
+                    self._specialist_agents[agent_key] = agent_instance
+                    logger.info(f"[ServiceV3] Loaded agent: {agent_key}")
+                else:
+                    logger.warning(f"[ServiceV3] Agent not found in DB: {agent_name}")
+            except Exception as e:
+                logger.error(f"[ServiceV3] Failed to load agent {agent_name}: {e}")
+
+        # 全エージェント統合を更新
+        self.all_agents = {
+            "supervisor": self.supervisor,
+            **self._specialist_agents
+        }
+
+        self._specialist_agents_loaded = True
+        logger.info(f"[ServiceV3] 専門エージェント群ロード完了: {len(self._specialist_agents)}個")
+
     async def process_user_message(
         self,
         session_id: str,
@@ -90,8 +141,9 @@ class ResearchDiscussionServiceV3:
     ) -> Dict[str, Any]:
         """
         ユーザーメッセージの処理 - Supervisor Pattern
-        
+
         フロー:
+        0. 専門エージェント群の動的ロード（初回のみ）
         1. Supervisor Agentによる高度な意図解析
         2. 動的ワークフロープランニング
         3. 専門エージェントへのタスク委譲
@@ -99,6 +151,9 @@ class ResearchDiscussionServiceV3:
         """
         try:
             logger.info(f"[ServiceV3] メッセージ処理開始: '{user_message[:50]}...' (paper: {paper_id})")
+
+            # Step 0: 専門エージェント群の動的ロード（初回のみ）
+            await self._ensure_agents_loaded()
             
             # Step 1: Supervisor Agentによる意図解析
             intent_result = await self._supervisor_analyze_intent(
@@ -123,7 +178,7 @@ class ResearchDiscussionServiceV3:
             
             # Step 5: セッションにメッセージを記録
             await self._record_conversation(
-                session_id, user_message, response, user_id
+                session_id, user_message, response, user_id, paper_id
             )
             
             return response
@@ -311,11 +366,22 @@ class ResearchDiscussionServiceV3:
                             await self._save_writer_result_to_section(result, task_parameters)
 
                         # AgentResultの実際のステータスをチェック
+                        # 注意: base_agent.AgentStatusとenhanced_base_agent.AgentStatusが別物なので、
+                        # Enumの値（文字列）で比較する
+                        has_status = hasattr(result, 'status')
+                        status_value = str(result.status.value) if has_status and hasattr(result.status, 'value') else str(result.status) if has_status else None
+                        status_completed = status_value == "completed" if status_value else False
+                        result_not_none = result.result is not None if hasattr(result, 'result') else False
+
+                        logger.info(f"[ServiceV3] Success check for {agent_name}: has_status={has_status}, status_value={status_value}, status_completed={status_completed}, result_not_none={result_not_none}")
+
                         agent_succeeded = (
-                            hasattr(result, 'status') and
-                            result.status == AgentStatus.COMPLETED and
-                            result.result is not None
+                            has_status and
+                            status_completed and
+                            result_not_none
                         )
+
+                        logger.info(f"[ServiceV3] Final agent_succeeded={agent_succeeded}")
 
                         return {
                             "agent": agent_name,
@@ -363,38 +429,17 @@ class ResearchDiscussionServiceV3:
         self,
         user_message: str,
         intent_result: Dict[str, Any],
-        workflow_result: Dict[str, Any], 
+        workflow_result: Dict[str, Any],
         execution_results: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
         """Step 4: 結果統合と最終回答生成"""
         try:
-            # デバッグログ追加（ファイルにも出力）
-            import json
-            debug_file = "/tmp/supervisor_debug.log"
-            with open(debug_file, "a") as f:
-                f.write(f"\n\n=== {datetime.now()} ===\n")
-                f.write(f"execution_results数: {len(execution_results)}\n")
-                for idx, r in enumerate(execution_results):
-                    f.write(f"Result {idx}: agent={r.get('agent')}, success={r.get('success')}, error={r.get('error')}\n")
-                    f.write(f"  task_type: {r.get('task_type')}\n")
-                    f.write(f"  description: {r.get('description')}\n")
-                    f.write(f"  result type: {type(r.get('result'))}\n")
-                    if r.get('result'):
-                        result_obj = r.get('result')
-                        if hasattr(result_obj, 'result'):
-                            f.write(f"  result.result: {result_obj.result}\n")
-                            f.write(f"  result.status: {result_obj.status}\n")
-                        f.write(f"  result keys: {list(result_obj.keys() if isinstance(result_obj, dict) else [])}\n")
-
             logger.info(f"[ServiceV3] execution_results数: {len(execution_results)}")
             for idx, r in enumerate(execution_results):
                 logger.info(f"[ServiceV3] Result {idx}: agent={r.get('agent')}, success={r.get('success')}, error={r.get('error')}")
 
             # 成功したタスクの抽出
             successful_results = [r for r in execution_results if r.get("success")]
-
-            with open(debug_file, "a") as f:
-                f.write(f"successful_results数: {len(successful_results)}\n")
 
             logger.info(f"[ServiceV3] successful_results数: {len(successful_results)}")
 
@@ -403,7 +448,7 @@ class ResearchDiscussionServiceV3:
             for result in successful_results:
                 agent_name = result.get("agent", "unknown")
                 agent_result = result.get("result", {})
-                
+
                 # エージェント名をResponseFormatter期待形式に変換
                 formatter_agent_name = {
                     "section_query": "SectionQueryAgent",
@@ -420,7 +465,7 @@ class ResearchDiscussionServiceV3:
                     "optimization": "OptimizationAgent",
                     "structure": "StructureAgent"
                 }.get(agent_name, agent_name)
-                
+
                 # EnhancedBaseAgentの結果処理
                 if hasattr(agent_result, 'result') and isinstance(agent_result.result, dict):
                     formatted_task_results[formatter_agent_name] = agent_result.result
@@ -428,7 +473,9 @@ class ResearchDiscussionServiceV3:
                     formatted_task_results[formatter_agent_name] = agent_result
                 else:
                     formatted_task_results[formatter_agent_name] = {"success": False, "error": "結果形式が無効"}
-            
+
+            logger.info(f"[ServiceV3] formatted_task_results keys: {list(formatted_task_results.keys())}")
+
             # ResponseFormatterを使用して統合レスポンス生成
             integrated_response = ResponseFormatter.integrate_all_results(
                 intent_analysis=intent_result.get("intent_analysis", {}),
@@ -885,18 +932,36 @@ class ResearchDiscussionServiceV3:
         session_id: str,
         user_message: str,
         response: Dict[str, Any],
-        user_id: str
+        user_id: str,
+        paper_id: Optional[str] = None
     ) -> None:
         """会話履歴の記録"""
         try:
-            # ユーザーメッセージを記録
+            # Step 1: チャットセッションが存在するか確認
+            existing_session = await self.repository.get_chat_session_by_id(session_id)
+
+            if not existing_session:
+                # セッションが存在しない場合は作成
+                if not paper_id:
+                    logger.warning(f"[ServiceV3] paper_idが指定されていないためセッション作成できません")
+                    return
+
+                logger.info(f"[ServiceV3] チャットセッション作成: session_id={session_id}, paper_id={paper_id}")
+                await self.repository.create_chat_session(
+                    paper_id=paper_id,
+                    user_id=user_id,
+                    title=user_message[:50],  # ユーザーメッセージの最初の50文字をタイトルに
+                    session_id=session_id  # E2Eテストで指定されたsession_idを使用
+                )
+
+            # Step 2: ユーザーメッセージを記録
             await self.repository.create_chat_message(
                 session_id=session_id,
                 role="user",
                 content=user_message
             )
 
-            # AIの応答を記録
+            # Step 3: AIの応答を記録
             await self.repository.create_chat_message(
                 session_id=session_id,
                 role="assistant",
@@ -906,6 +971,8 @@ class ResearchDiscussionServiceV3:
                 references=response.get("references", [])
             )
 
+            logger.info(f"[ServiceV3] 会話記録成功: session_id={session_id}, messages=2件")
+
         except Exception as e:
-            logger.error(f"[ServiceV3] 会話記録エラー: {e}")
+            logger.error(f"[ServiceV3] 会話記録エラー: {e}", exc_info=True)
             # エラーでも処理を中断しない

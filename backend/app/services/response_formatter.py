@@ -278,7 +278,7 @@ class ResponseFormatter:
         final_message_parts = []
         references = []
         task_summaries = {}
-        
+
         # 各エージェントの結果を処理
         logger.info(f"[ResponseFormatter] Processing {len(task_results)} agent results: {list(task_results.keys())}")
         for agent_name, result in task_results.items():
@@ -298,8 +298,11 @@ class ResponseFormatter:
                 task_summaries["section_query"] = "完了"
                 
             elif agent_name == "WriterAgent":
+                logger.info(f"[ResponseFormatter] WriterAgent block entered")
                 formatted = cls.format_writer_response(result)
+                logger.info(f"[ResponseFormatter] WriterAgent formatted message length: {len(formatted['message'])}")
                 final_message_parts.append(formatted["message"])
+                logger.info(f"[ResponseFormatter] WriterAgent message appended. Current parts count: {len(final_message_parts)}")
                 task_summaries["content_generation"] = "完了"
                 
             elif agent_name == "OutlineAgent":
@@ -725,7 +728,10 @@ class ResponseFormatter:
 
             elif agent_name == "DiscoveryAgent":
                 # 研究資料検索・発見結果の処理
+                logger.info(f"[ResponseFormatter] DiscoveryAgent block entered")
+                logger.info(f"[ResponseFormatter] DiscoveryAgent result.get('success', True): {result.get('success', True)}")
                 if result.get("success", True):  # DiscoveryAgentはデフォルトでsuccess
+                    logger.info(f"[ResponseFormatter] DiscoveryAgent success condition passed")
                     response = "✅ ChromaDB資料検索タスクが完了しました！\n\n"
 
                     # 検索情報
@@ -766,7 +772,9 @@ class ResponseFormatter:
                     else:
                         response += "💡 該当する資料が見つかりませんでした。検索条件を変更してお試しください。"
 
+                    logger.info(f"[ResponseFormatter] DiscoveryAgent response length: {len(response)}")
                     final_message_parts.append(response)
+                    logger.info(f"[ResponseFormatter] DiscoveryAgent message appended. Current parts count: {len(final_message_parts)}")
                     task_summaries["discovery"] = "完了"
 
             elif agent_name == "StrategyAgent":

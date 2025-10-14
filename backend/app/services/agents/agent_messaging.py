@@ -36,7 +36,9 @@ class ExecutionMetrics:
     items_successful: int = 0
     success_rate: float = 0.0
     quality_score: Optional[float] = None
-    
+    api_calls: int = 0  # API呼び出し回数
+    cache_hits: int = 0  # キャッシュヒット回数
+
     def complete(self):
         """実行完了時の処理"""
         self.end_time = time.time()

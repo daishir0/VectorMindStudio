@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass
 
-from app.services.agents.base_agent import AgentExecutionError, AgentTask, AgentResult
+from app.services.agents.base_agent import AgentExecutionError, AgentTask, AgentResult, AgentStatus
 from app.services.agents.enhanced_base_agent import EnhancedBaseAgent, ExecutionMetrics
 from app.infrastructure.external.openai_client import openai_client
 
@@ -57,13 +57,14 @@ class DiscoveryAgent(EnhancedBaseAgent):
         # タスクタイプ定義
         self.task_definitions = {
             "gap_analysis": "知識・研究ギャップの特定",
-            "redundancy_detection": "冗長性・重複内容の検出", 
+            "redundancy_detection": "冗長性・重複内容の検出",
             "balance_analysis": "研究内容のバランス分析",
             "citation_analysis": "引用の妥当性・網羅性分析",
             "novel_theme_discovery": "新規研究テーマの発見",
             "related_research_exploration": "関連研究の探索・発見",
             "competitive_analysis": "競合研究との差別化分析",
-            "integrated_discovery": "統合的探索・発見分析"
+            "integrated_discovery": "統合的探索・発見分析",
+            "search_chromadb": "ChromaDB検索"  # 追加
         }
         
         # 分析対象領域定義
@@ -107,42 +108,40 @@ class DiscoveryAgent(EnhancedBaseAgent):
         else:
             raise AgentExecutionError(f"サポートされていないタスクタイプ: {task_type}")
 
-    async def execute_task(
-        self, 
-        task_type: str, 
-        section_id: str, 
-        content: str, 
-        parameters: Optional[Dict[str, Any]] = None
-    ) -> AgentResult:
+    async def execute_task(self, task: AgentTask) -> AgentResult:
         """
-        発見・探索タスクの実行
-        
+        発見・探索タスクの実行(標準AgentTask形式)
+
         Args:
-            task_type: 実行するタスクの種類
-            section_id: 対象セクションID
-            content: 分析対象のコンテンツ
-            parameters: 追加パラメータ
-            
+            task: AgentTaskオブジェクト
+
         Returns:
             AgentResult: 実行結果
         """
         try:
             metrics = ExecutionMetrics()
-            
+            task_type = task.task_type
+            parameters = task.parameters or {}
+
             if task_type not in self.supported_tasks:
                 raise AgentExecutionError(f"サポートされていないタスクタイプ: {task_type}")
-            
+
+            # ChromaDB検索タスクの特別処理
+            if task_type == "search_chromadb":
+                return await self._execute_chromadb_search(task, metrics)
+
             # パラメータの準備
+            # section_idとcontentをparametersから取得（後方互換性維持）
             params = {
-                "section_id": section_id,
-                "content": content,
+                "section_id": parameters.get("section_id", ""),
+                "content": parameters.get("content", ""),
                 "task_type": task_type,
-                **(parameters or {})
+                **parameters
             }
-            
+
             # タスク実行
             result = await self._execute_discovery_task(task_type, params, metrics)
-            
+
             return AgentResult(
                 agent_name=self.agent_name,
                 task_type=task_type,
@@ -151,12 +150,13 @@ class DiscoveryAgent(EnhancedBaseAgent):
                 metrics=metrics,
                 timestamp=datetime.utcnow()
             )
-            
+
         except Exception as e:
-            logger.error(f"DiscoveryAgentタスク実行エラー - {task_type}: {e}")
+            logger.error(f"DiscoveryAgentタスク実行エラー - {task.task_type}: {e}", exc_info=True)
+            metrics = ExecutionMetrics()
             return AgentResult(
                 agent_name=self.agent_name,
-                task_type=task_type,
+                task_type=task.task_type,
                 status="error",
                 error=str(e),
                 metrics=metrics,
@@ -959,4 +959,96 @@ class DiscoveryAgent(EnhancedBaseAgent):
     def get_analysis_domains(self) -> List[str]:
         """分析対象領域の取得"""
         return self.analysis_domains.copy()
+
+    async def _execute_chromadb_search(self, task: AgentTask, metrics: ExecutionMetrics) -> AgentResult:
+        """ChromaDB検索の実行"""
+        try:
+            parameters = task.parameters or {}
+            query = parameters.get("query", "")
+            paper_id = parameters.get("paper_id", "")
+            max_results = parameters.get("max_results", 10)
+            search_type = parameters.get("search_type", "semantic")
+
+            logger.info(f"[DiscoveryAgent] ChromaDB検索開始: query={query[:50]}..., max_results={max_results}")
+
+            if not query:
+                raise AgentExecutionError("検索クエリが指定されていません")
+
+            # ChromaDBクライアントを取得（EnhancedBaseAgentが持っているsessionから）
+            from app.infrastructure.external.chroma_client import chroma_client
+
+            # セマンティック検索を実行（Chroma collection.queryを直接使用）
+            # collectionはプロパティなので()は不要
+            collection = chroma_client.collection
+
+            # ChromaDBのquery APIは同期的なので直接呼び出し
+            search_result = collection.query(
+                query_texts=[query],
+                n_results=max_results
+            )
+
+            logger.info(f"[DiscoveryAgent] ChromaDB検索完了: {len(search_result.get('documents', [[]])[0])}件の結果")
+
+            # 結果をフォーマット
+            formatted_results = []
+            documents = search_result.get("documents", [[]])[0]
+            metadatas = search_result.get("metadatas", [[]])[0]
+            distances = search_result.get("distances", [[]])[0]
+
+            for idx in range(len(documents)):
+                formatted_results.append({
+                    "rank": idx + 1,
+                    "content": documents[idx],
+                    "metadata": metadatas[idx] if idx < len(metadatas) else {},
+                    "distance": distances[idx] if idx < len(distances) else 0.0,
+                    "relevance_score": 1.0 - (distances[idx] if idx < len(distances) else 0.0)  # distanceを関連性スコアに変換
+                })
+
+            # 検索結果の要約を生成
+            summary_text = self._generate_search_summary(query, formatted_results)
+
+            result_dict = {
+                "query": query,
+                "search_type": search_type,
+                "total_results": len(formatted_results),
+                "results": formatted_results,
+                "summary": summary_text,
+                "paper_id": paper_id,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+
+            return AgentResult(
+                agent_name=self.agent_name,
+                status=AgentStatus.COMPLETED,
+                result=result_dict,
+                execution_time=0.0,  # メトリクスから取得可能
+                error_message=None,
+                metadata={"task_type": "search_chromadb", "metrics": metrics}
+            )
+
+        except Exception as e:
+            logger.error(f"[DiscoveryAgent] ChromaDB検索エラー: {e}", exc_info=True)
+            return AgentResult(
+                agent_name=self.agent_name,
+                status=AgentStatus.FAILED,
+                result=None,
+                execution_time=0.0,
+                error_message=str(e),
+                metadata={"task_type": "search_chromadb", "metrics": metrics}
+            )
+
+    def _generate_search_summary(self, query: str, results: List[Dict[str, Any]]) -> str:
+        """検索結果の要約を生成"""
+        if not results:
+            return f"「{query}」に関する情報はChromatDBに見つかりませんでした。"
+
+        top_results = results[:3]
+        summary_parts = [f"「{query}」に関する資料を{len(results)}件発見しました。\n"]
+
+        for result in top_results:
+            content_preview = result["content"][:200] + "..." if len(result["content"]) > 200 else result["content"]
+            relevance = result["relevance_score"]
+            summary_parts.append(f"- (関連度: {relevance:.2f}) {content_preview}")
+
+        return "\n".join(summary_parts)
 

@@ -15,6 +15,7 @@ from .discovery_agent import DiscoveryAgent
 from .generation_agent import GenerationAgent
 from .strategy_agent import StrategyAgent
 from .optimization_agent import OptimizationAgent
+from .structure_agent import StructureAgent
 # ChromaDB依存のため一時的にコメントアウト
 # from .reference_agent import ReferenceAgent
 
@@ -36,5 +37,6 @@ __all__ = [
     "GenerationAgent",
     "StrategyAgent",
     "OptimizationAgent",
+    "StructureAgent",
     # "ReferenceAgent"  # ChromaDB依存のため一時的にコメントアウト
 ]

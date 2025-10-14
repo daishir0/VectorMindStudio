@@ -80,12 +80,14 @@ export interface ChatResponse {
 export interface CreatePaperRequest {
   title: string;
   description?: string;
+  agent_profile_id?: string;
 }
 
 export interface UpdatePaperRequest {
   title?: string;
   description?: string;
   status?: string;
+  agent_profile_id?: string;
 }
 
 export interface CreateSectionRequest {

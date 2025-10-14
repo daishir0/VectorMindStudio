@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Save, X, AlertTriangle, Trash2 } from 'lucide-react';
+import { ArrowLeft, Save, X, AlertTriangle, Trash2, Layers } from 'lucide-react';
 import { paperService } from '../services/paperService';
+import { useProfilesByPaperType, useDefaultProfileByPaperType } from '../hooks/useAgentProfiles';
+import { PaperType } from '../types';
 import toast from 'react-hot-toast';
 
 const EditPaper: React.FC = () => {
@@ -12,8 +14,23 @@ const EditPaper: React.FC = () => {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState('draft');
+  const [agentProfileId, setAgentProfileId] = useState('');
+  const [paperType, setPaperType] = useState<PaperType>(PaperType.GENERAL);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
+
+  // 論文タイプ別のプロファイル一覧取得
+  const { data: profiles } = useProfilesByPaperType(paperType);
+  // デフォルトプロファイル取得
+  const { data: defaultProfile } = useDefaultProfileByPaperType(paperType);
+
+  // 論文タイプラベル
+  const paperTypeLabels: Record<PaperType, string> = {
+    [PaperType.MEDICAL]: '医学',
+    [PaperType.ENGINEERING]: '工学',
+    [PaperType.HUMANITIES]: '人文科学',
+    [PaperType.GENERAL]: '一般',
+  };
 
   // 論文データ取得
   const { data: paper, isLoading } = useQuery({
@@ -28,12 +45,17 @@ const EditPaper: React.FC = () => {
       setTitle(paper.title);
       setDescription(paper.description || '');
       setStatus(paper.status);
+      // agent_profile_idとpaper_typeがあれば設定
+      // @ts-ignore - Paper型にagent_profile_idがないが、APIから返される可能性がある
+      setAgentProfileId(paper.agent_profile_id || '');
+      // @ts-ignore
+      setPaperType(paper.paper_type || PaperType.GENERAL);
     }
   }, [paper]);
 
   // 論文更新ミューテーション
   const updateMutation = useMutation({
-    mutationFn: (data: { title: string; description?: string; status: string }) =>
+    mutationFn: (data: { title: string; description?: string; status: string; agent_profile_id?: string }) =>
       paperService.updatePaper(id!, data),
     onSuccess: () => {
       toast.success('論文が更新されました');
@@ -61,7 +83,7 @@ const EditPaper: React.FC = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!title.trim()) {
       toast.error('タイトルを入力してください');
       return;
@@ -71,6 +93,7 @@ const EditPaper: React.FC = () => {
       title: title.trim(),
       description: description.trim() || undefined,
       status,
+      agent_profile_id: agentProfileId || undefined,
     });
   };
 
@@ -194,6 +217,58 @@ const EditPaper: React.FC = () => {
                 <option value="completed">完了</option>
                 <option value="published">公開済み</option>
               </select>
+            </div>
+
+            {/* 論文タイプ */}
+            <div>
+              <label htmlFor="paperType" className="block text-sm font-medium text-gray-700 mb-2">
+                論文タイプ
+              </label>
+              <select
+                id="paperType"
+                value={paperType}
+                onChange={(e) => {
+                  setPaperType(e.target.value as PaperType);
+                  // 論文タイプ変更時、agent_profile_idをリセット
+                  setAgentProfileId('');
+                }}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                {Object.entries(paperTypeLabels).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* エージェントプロファイル */}
+            <div>
+              <label htmlFor="agent_profile_id" className="block text-sm font-medium text-gray-700 mb-2">
+                <div className="flex items-center gap-2">
+                  <Layers className="w-4 h-4" />
+                  エージェントプロファイル
+                </div>
+              </label>
+              <select
+                id="agent_profile_id"
+                value={agentProfileId}
+                onChange={(e) => setAgentProfileId(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="">デフォルトプロファイルを使用</option>
+                {profiles?.map((profile) => (
+                  <option key={profile.id} value={profile.id}>
+                    {profile.name}
+                    {profile.is_default && ' (デフォルト)'}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-sm text-gray-500">
+                {defaultProfile
+                  ? `デフォルト: ${defaultProfile.name}`
+                  : '選択した論文タイプに対応するプロファイルが設定されます'}
+              </p>
             </div>
 
             {/* アクションボタン */}

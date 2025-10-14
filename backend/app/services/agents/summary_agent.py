@@ -380,8 +380,13 @@ class SummaryAgent(BaseAgent):
             # セクション情報取得
             sections = await repository.get_sections_by_paper(paper_id)
             if not sections:
+                # カスタムメッセージがある場合はそれを使用
+                custom_message = params.get("custom_message")
+                default_message = "この論文にはまだセクションが作成されていません。セクションを追加してから要約を再実行してください。"
+
                 return {
-                    "summary": "この論文にはまだセクションが作成されていません。セクションを追加してから要約を再実行してください。",
+                    "summary": custom_message if custom_message else default_message,
+                    "custom_message": custom_message,  # ResponseFormatterで使用
                     "paper_title": paper.title,
                     "section_count": 0,
                     "word_count": 0,

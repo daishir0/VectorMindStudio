@@ -12,6 +12,11 @@ export default defineConfig({
   server: {
     port: 3011,
     host: true,
+    allowedHosts: [
+      'vectormindstudio.path-finder.jp',
+      'localhost',
+      '127.0.0.1',
+    ],
     proxy: {
       '/api': {
         target: 'http://localhost:8000',
