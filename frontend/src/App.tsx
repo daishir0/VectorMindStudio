@@ -20,6 +20,8 @@ import ChatPage from './pages/Chat';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Profile from './pages/Profile';
+import Settings from './pages/Settings';
+import Help from './pages/Help';
 import NotFound from './pages/NotFound';
 import Papers from './pages/Papers';
 import CreatePaper from './pages/CreatePaper';
@@ -92,6 +94,8 @@ function App() {
                   <Route path="/profiles/:profileId" element={<ProfileDetailPage />} />
                   <Route path="/profiles/:profileId/edit" element={<ProfileFormPage />} />
                   <Route path="/profile" element={<Profile />} />
+                  <Route path="/settings" element={<Settings />} />
+                  <Route path="/help" element={<Help />} />
                 </Route>
               </Route>
               
