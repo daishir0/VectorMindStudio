@@ -68,47 +68,90 @@ class OutlineAgent(BaseAgent):
         else:
             raise AgentValidationError(f"未サポートのタスクタイプ: {task_type}")
     
+    def _normalize_sections_param(self, sections_raw: Any) -> List[Dict[str, Any]]:
+        """
+        様々な形式のsectionsパラメータを正規化
+
+        入力形式例:
+        - ["Introduction", "Methods", "Results"]  # 文字列リスト
+        - [{"name": "Introduction"}, {"title": "Methods"}]  # 辞書リスト(キー混在)
+        - [{"title": "Introduction", "key_points": [...]}]  # 完全な辞書
+
+        出力形式:
+        - [{"title": "Introduction"}, {"title": "Methods"}, ...]
+        """
+        if not sections_raw:
+            return []
+
+        if not isinstance(sections_raw, list):
+            sections_raw = [sections_raw]
+
+        normalized = []
+        for item in sections_raw:
+            if isinstance(item, str):
+                # 文字列の場合はtitleとして扱う
+                normalized.append({"title": item})
+            elif isinstance(item, dict):
+                # 辞書の場合、titleまたはnameまたはsection_titleを探す
+                title = (item.get("title") or
+                        item.get("name") or
+                        item.get("section_title") or
+                        str(item))
+                normalized.append({"title": title, **item})
+            else:
+                # その他の型は文字列化
+                normalized.append({"title": str(item)})
+
+        return normalized
+
     async def _create_section(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """
         セクションを作成（AAIDC準拠 - Clear Boundaries Pattern）
         責務: セクションのDB作成のみ。コンテンツ生成はWriterAgentが担当。
+
+        複数セクション対応: params.get("sections")がリストの場合、すべて作成
         """
         paper_id = params.get("paper_id")
-        section_title = params.get("section_title") or params.get("title")
         user_id = params.get("user_id")
-        
+
+        # 複数セクションの一括作成をサポート
+        sections_raw = params.get("sections")
+        if sections_raw and isinstance(sections_raw, list) and len(sections_raw) > 0:
+            # パラメータ正規化
+            sections = self._normalize_sections_param(sections_raw)
+            return await self._create_multiple_sections(paper_id, user_id, sections)
+
+        # 単一セクション作成（後方互換性）
+        section_title = params.get("section_title") or params.get("title")
+
         if not all([paper_id, section_title, user_id]):
             raise AgentValidationError("paper_id, section_title, user_id は必須です")
-        
+
         try:
             logger.info(f"[OutlineAgent] セクション作成開始: '{section_title}' (paper: {paper_id})")
-            
-            # 新しい階層パスを生成（ルートレベル）
-            root_sections = await self.repository.get_root_sections(paper_id)
-            next_number = len(root_sections) + 1
-            new_hierarchy_path = f"{next_number:03d}"
-            
-            # セクション番号を生成 (例: "1.2.3")
-            section_number = str(next_number)
-            
+
+            # 次のposition番号を取得
+            next_position = await self.repository.get_next_position(paper_id)
+            section_number = str(next_position)
+
             # セクション作成（初期状態は空コンテンツ）
             section = await self.repository.create_section(
                 paper_id=paper_id,
-                hierarchy_path=new_hierarchy_path,
+                position=next_position,
                 section_number=section_number,
                 title=section_title,
+                user_id=user_id,
                 content="",  # 初期は空
                 summary=""  # 初期は空
             )
-            
-            logger.info(f"[OutlineAgent] セクション作成完了: ID={section.id}, 階層={new_hierarchy_path}")
-            
+
+            logger.info(f"[OutlineAgent] セクション作成完了: ID={section.id}, position={next_position}")
+
             # Clear Boundaries Pattern: OutlineAgentはセクション構造のみ返す
             return {
-                "section_id": section.id,
-                "section_metadata": {
+                "section": {
                     "id": section.id,
-                    "hierarchy_path": section.hierarchy_path,
+                    "position": section.position,
                     "section_number": section.section_number,
                     "title": section.title,
                     "status": section.status,
@@ -165,6 +208,86 @@ class OutlineAgent(BaseAgent):
             logger.error(f"セクション更新エラー: {e}")
             raise AgentExecutionError(f"セクション更新に失敗しました: {e}")
     
+    async def _create_multiple_sections(
+        self,
+        paper_id: str,
+        user_id: str,
+        sections_data: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        複数のセクションを一度に作成
+
+        Args:
+            paper_id: 論文ID
+            user_id: ユーザーID
+            sections_data: セクション情報のリスト [{"title": "...", "key_points": [...]}, ...]
+
+        Returns:
+            作成されたセクション情報
+        """
+        if not paper_id or not user_id:
+            raise AgentValidationError("paper_id, user_id は必須です")
+
+        created_sections = []
+        errors = []
+
+        try:
+            logger.info(f"[OutlineAgent] 複数セクション作成開始: {len(sections_data)}個 (paper: {paper_id})")
+
+            # 既存セクション数を取得
+            existing_sections = await self.repository.get_sections_by_paper(paper_id)
+            next_position = len(existing_sections) + 1
+
+            for idx, section_data in enumerate(sections_data):
+                section_title = section_data.get("title")
+                if not section_title:
+                    errors.append(f"セクション{idx + 1}: タイトルが未指定")
+                    continue
+
+                try:
+                    # positionベースでセクション作成
+                    position = next_position + idx
+                    section_number = str(position)
+
+                    section = await self.repository.create_section(
+                        paper_id=paper_id,
+                        position=position,
+                        section_number=section_number,
+                        title=section_title,
+                        user_id=user_id,
+                        content="",  # 初期は空
+                        summary=""  # 初期は空
+                    )
+
+                    created_sections.append({
+                        "id": section.id,
+                        "position": section.position,
+                        "section_number": section.section_number,
+                        "title": section.title,
+                        "status": section.status,
+                    })
+
+                    logger.info(f"[OutlineAgent] セクション作成完了: {idx + 1}/{len(sections_data)} - '{section_title}'")
+
+                except Exception as e:
+                    logger.error(f"[OutlineAgent] セクション'{section_title}'作成エラー: {e}")
+                    errors.append(f"{section_title}: {str(e)}")
+
+            logger.info(f"[OutlineAgent] 複数セクション作成完了: 成功{len(created_sections)}個, 失敗{len(errors)}個")
+
+            return {
+                "created_sections": created_sections,
+                "total_created": len(created_sections),
+                "errors": errors,
+                "action": "create_multiple_sections",
+                "success": len(created_sections) > 0,
+                "message": f"{len(created_sections)}個のセクションを作成しました"
+            }
+
+        except Exception as e:
+            logger.error(f"[OutlineAgent] 複数セクション作成エラー: {e}")
+            raise AgentExecutionError(f"複数セクション作成に失敗しました: {e}")
+
     async def _delete_section(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """セクションを論理削除"""
         section_id = params.get("section_id")

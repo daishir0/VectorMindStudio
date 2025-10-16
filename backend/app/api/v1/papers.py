@@ -22,7 +22,7 @@ from app.schemas.common import ApiResponse, PaginatedResponse
 from app.domain.entities.user import User
 from app.api.deps.auth import get_current_active_user
 from app.infrastructure.repositories.paper_repository import PaperRepository
-from app.services.research_discussion_service_v3 import ResearchDiscussionServiceV3
+from app.services.langgraph_discussion_service import LangGraphDiscussionService
 from app.services.agents.base_agent import AgentStatus
 
 router = APIRouter()
@@ -553,9 +553,9 @@ async def send_message(
                 detail="チャットセッションが見つかりません"
             )
         
-        # 研究ディスカッションサービスでメッセージ処理
-        discussion_service = ResearchDiscussionServiceV3(session)
-        
+        # LangGraphディスカッションサービスでメッセージ処理
+        discussion_service = LangGraphDiscussionService(session)
+
         response = await discussion_service.process_user_message(
             session_id=session_id,
             user_message=message_data.message,

@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
-import { ArrowLeft, Save, FileText, Layers } from 'lucide-react';
+import { ArrowLeft, Save, FileText } from 'lucide-react';
 import { paperService } from '../services/paperService';
-import { useProfilesByPaperType, useDefaultProfileByPaperType } from '../hooks/useAgentProfiles';
 import { PaperType } from '../types';
 import toast from 'react-hot-toast';
 
@@ -13,13 +12,7 @@ const CreatePaper: React.FC = () => {
   const [formData, setFormData] = useState({
     title: '',
     description: '',
-    agent_profile_id: '',
   });
-
-  // 論文タイプ別のプロファイル一覧取得
-  const { data: profiles } = useProfilesByPaperType(paperType);
-  // デフォルトプロファイル取得
-  const { data: defaultProfile } = useDefaultProfileByPaperType(paperType);
 
   // 論文タイプラベル
   const paperTypeLabels: Record<PaperType, string> = {
@@ -129,11 +122,7 @@ const CreatePaper: React.FC = () => {
               <select
                 id="paperType"
                 value={paperType}
-                onChange={(e) => {
-                  setPaperType(e.target.value as PaperType);
-                  // 論文タイプ変更時、agent_profile_idをリセット
-                  setFormData({ ...formData, agent_profile_id: '' });
-                }}
+                onChange={(e) => setPaperType(e.target.value as PaperType)}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
                 {Object.entries(paperTypeLabels).map(([value, label]) => (
@@ -142,36 +131,6 @@ const CreatePaper: React.FC = () => {
                   </option>
                 ))}
               </select>
-            </div>
-
-            {/* エージェントプロファイル */}
-            <div>
-              <label htmlFor="agent_profile_id" className="block text-sm font-medium text-gray-700 mb-2">
-                <div className="flex items-center gap-2">
-                  <Layers className="w-4 h-4" />
-                  エージェントプロファイル
-                </div>
-              </label>
-              <select
-                id="agent_profile_id"
-                name="agent_profile_id"
-                value={formData.agent_profile_id}
-                onChange={handleInputChange}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="">デフォルトプロファイルを使用</option>
-                {profiles?.map((profile) => (
-                  <option key={profile.id} value={profile.id}>
-                    {profile.name}
-                    {profile.is_default && ' (デフォルト)'}
-                  </option>
-                ))}
-              </select>
-              <p className="mt-1 text-sm text-gray-500">
-                {defaultProfile
-                  ? `デフォルト: ${defaultProfile.name}`
-                  : '選択した論文タイプに対応するプロファイルが設定されます'}
-              </p>
             </div>
 
             {/* 作成後の流れ説明 */}

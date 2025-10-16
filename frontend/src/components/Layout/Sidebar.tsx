@@ -14,7 +14,6 @@ import {
   MessageSquare, // Chat用のアイコン
   PenTool, // Papers用のアイコン
   Bot, // エージェント管理用のアイコン
-  Layers, // プロファイル管理用のアイコン
 } from 'lucide-react';
 
 const navigation = [
@@ -65,13 +64,8 @@ const navigation = [
   },
   {
     name: 'エージェント管理',
-    href: '/agents',
+    href: '/langgraph-agents',
     icon: Bot,
-  },
-  {
-    name: 'プロファイル管理',
-    href: '/profiles',
-    icon: Layers,
   },
 ];
 

@@ -54,3 +54,34 @@ Thumbs.db
 
 
 vectormind.db
+
+# Test directory - test/配下は全てGitHubから除外（ローカルには保持）
+test/
+
+# Backend test files
+backend/tests/
+backend/test_*.py
+backend/run_*_tests.py
+backend/scripts/test_*.py
+
+# Output directories
+outputs/
+backend/outputs/
+*.log
+
+# Database files
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+test*.db
+*_test.db
+
+# Root test files
+test_*.py
+*_test.py
+
+# Pytest cache
+pytest_cache/
+.pytest_cache/
+__pycache__/

@@ -29,13 +29,8 @@ import EditPaper from './pages/EditPaper';
 import PaperDetail from './pages/PaperDetail';
 import CreateChatSession from './pages/CreateChatSession';
 import ChatSession from './pages/ChatSession';
-import AgentsPage from './pages/AgentsPage';
-import AgentsListPage from './pages/AgentsListPage';
-import AgentDetailPage from './pages/AgentDetailPage';
-import AgentFormPage from './pages/AgentFormPage';
-import ProfilesListPage from './pages/ProfilesListPage';
-import ProfileDetailPage from './pages/ProfileDetailPage';
-import ProfileFormPage from './pages/ProfileFormPage';
+import LangGraphAgentsPage from './pages/LangGraphAgentsPage';
+import LangGraphAgentDetailPage from './pages/LangGraphAgentDetailPage';
 
 import { AuthProvider } from './contexts/AuthContext';
 import { ProtectedRoute } from './components/Auth/ProtectedRoute';
@@ -84,15 +79,8 @@ function App() {
                   <Route path="/papers/:id/edit" element={<EditPaper />} />
                   <Route path="/papers/:id/chat/create" element={<CreateChatSession />} />
                   <Route path="/papers/:id/chat/:sessionId" element={<ChatSession />} />
-                  <Route path="/agents-old" element={<AgentsPage />} />
-                  <Route path="/agents" element={<AgentsListPage />} />
-                  <Route path="/agents/new" element={<AgentFormPage />} />
-                  <Route path="/agents/:agentId" element={<AgentDetailPage />} />
-                  <Route path="/agents/:agentId/edit" element={<AgentFormPage />} />
-                  <Route path="/profiles" element={<ProfilesListPage />} />
-                  <Route path="/profiles/new" element={<ProfileFormPage />} />
-                  <Route path="/profiles/:profileId" element={<ProfileDetailPage />} />
-                  <Route path="/profiles/:profileId/edit" element={<ProfileFormPage />} />
+                  <Route path="/langgraph-agents" element={<LangGraphAgentsPage />} />
+                  <Route path="/langgraph-agents/:agentId" element={<LangGraphAgentDetailPage />} />
                   <Route path="/profile" element={<Profile />} />
                   <Route path="/settings" element={<Settings />} />
                   <Route path="/help" element={<Help />} />

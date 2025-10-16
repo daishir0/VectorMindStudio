@@ -47,13 +47,13 @@ class QualityAgent(EnhancedBaseAgent):
             "comprehensive_quality_audit" # 包括的品質監査
         ]
     
-    async def _execute_core(self, task: AgentTask, metrics: ExecutionMetrics) -> Any:
-        """コア実行ロジック"""
+    async def _execute_core_with_metrics(self, task: AgentTask, metrics: ExecutionMetrics) -> Any:
+        """コア実行ロジック（メトリクス付き）"""
         if not self.repository:
             raise AgentExecutionError("データベースセッションが必要です")
-        
+
         task_type = task.task_type
-        
+
         if task_type == "quality_assessment":
             return await self._perform_quality_assessment(task.parameters, metrics)
         elif task_type == "compliance_check":

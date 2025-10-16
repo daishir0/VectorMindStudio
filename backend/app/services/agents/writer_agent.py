@@ -6,6 +6,7 @@ import logging
 
 from .base_agent import BaseAgent, AgentTask, AgentValidationError, AgentExecutionError
 from app.infrastructure.external.openai_client import openai_client
+from app.infrastructure.repositories.paper_repository import PaperRepository
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -13,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 class WriterAgent(BaseAgent):
     """簡素化されたライティングエージェント"""
-    
+
     def __init__(self, session=None):
         super().__init__(
             name="WriterAgent",
@@ -22,6 +23,7 @@ class WriterAgent(BaseAgent):
             timeout=settings.AI_AGENT_TIMEOUT_SECONDS
         )
         self.session = session
+        self.repository = PaperRepository(session) if session else None
     
     def _get_supported_task_types(self) -> List[str]:
         return [
@@ -57,31 +59,109 @@ class WriterAgent(BaseAgent):
             raise AgentValidationError(f"未サポートのタスクタイプ: {task_type}")
     
     async def _generate_content(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """新規コンテンツを生成"""
+        """新規コンテンツを生成してDBに保存（複数セクション対応）"""
         title = params.get("title")
         section_type = params.get("section_type", "general")
         requirements = params.get("requirements", "")
         target_length = params.get("target_length", 500)
         tone = params.get("tone", "academic")
         context = params.get("context", "")
-        
+        paper_id = params.get("paper_id")
+
         if not title:
             raise AgentValidationError("title は必須です")
-        
+
+        # 複数セクションタイトルの分割（", "、" and "、"と"で区切られている場合）
+        import re
+        titles = re.split(r',\s*|\s+and\s+|\s+と\s+', title)
+        titles = [t.strip() for t in titles if t.strip()]
+
+        if len(titles) == 0:
+            raise AgentValidationError("有効なタイトルが見つかりません")
+
         try:
-            # コンテンツ生成
-            content = await self._generate_content_with_openai(
-                title, section_type, requirements, target_length, tone, context
-            )
-            
-            return {
-                "content": content,
-                "word_count": len(content.split()),
-                "character_count": len(content),
-                "action": "generate_content",
-                "success": True
-            }
-            
+            results = []
+            all_section_ids = []
+            total_word_count = 0
+            total_char_count = 0
+
+            # 各セクションを処理
+            for single_title in titles:
+                # コンテンツ生成
+                content = await self._generate_content_with_openai(
+                    single_title, section_type, requirements, target_length, tone, context
+                )
+
+                logger.info(f"[WriterAgent] コンテンツ生成完了: '{single_title}' ({len(content)}文字)")
+
+                # DBに保存（repositoryが利用可能な場合）
+                section_id = None
+                if self.repository and paper_id:
+                    try:
+                        # 該当セクションを検索
+                        sections = await self.repository.get_sections_by_paper(paper_id)
+                        target_section = None
+                        for section in sections:
+                            if section.title == single_title:
+                                target_section = section
+                                break
+
+                        if target_section:
+                            # word_countも一緒に更新
+                            word_count = len(content.split())
+                            await self.repository.update_section(
+                                section_id=target_section.id,
+                                update_data={
+                                    "content": content,
+                                    "word_count": word_count
+                                }
+                            )
+                            section_id = target_section.id
+                            logger.info(f"[WriterAgent] セクション更新完了: ID={section_id}, title='{single_title}', word_count={word_count}")
+                        else:
+                            logger.warning(f"[WriterAgent] セクションが見つかりません: title='{single_title}', paper_id={paper_id}")
+                    except Exception as db_error:
+                        logger.error(f"[WriterAgent] DB保存エラー: {db_error}")
+                        # DB保存失敗してもコンテンツ生成は成功として返す
+
+                word_count = len(content.split())
+                char_count = len(content)
+                total_word_count += word_count
+                total_char_count += char_count
+
+                results.append({
+                    "title": single_title,
+                    "content": content,
+                    "section_id": section_id,
+                    "word_count": word_count,
+                    "character_count": char_count
+                })
+
+                if section_id:
+                    all_section_ids.append(section_id)
+
+            # 複数セクションの場合は統合結果を返す
+            if len(results) == 1:
+                return {
+                    "content": results[0]["content"],
+                    "section_id": results[0]["section_id"],
+                    "word_count": results[0]["word_count"],
+                    "character_count": results[0]["character_count"],
+                    "action": "generate_content",
+                    "success": True
+                }
+            else:
+                return {
+                    "results": results,
+                    "section_ids": all_section_ids,
+                    "total_sections": len(results),
+                    "total_word_count": total_word_count,
+                    "total_character_count": total_char_count,
+                    "action": "generate_content",
+                    "success": True,
+                    "message": f"{len(results)}個のセクションを生成しました"
+                }
+
         except Exception as e:
             logger.error(f"コンテンツ生成エラー: {e}")
             raise AgentExecutionError(f"コンテンツ生成に失敗しました: {e}")
@@ -220,34 +300,49 @@ class WriterAgent(BaseAgent):
     
     async def _generate_draft(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """
-        論文セクションの初稿を生成（AAIDC準拠 - Clear Boundaries Pattern）
-        責務: セクションコンテンツの生成のみ。DB保存は呼び出し元が担当。
+        論文セクションの初稿を生成してDBに保存（複数セクション対応）
+        責務拡張: セクションコンテンツの生成とDB保存（OutlineAgentと同様の設計）
         """
-        section_title = params.get("section_title") 
+        section_title = params.get("section_title")
         requirements = params.get("requirements", "")
         paper_id = params.get("paper_id")
         context = params.get("context", {})
-        
+
         if not section_title:
             raise AgentValidationError("section_title は必須です")
-        
+
+        # 複数セクションタイトルの分割（", "、" and "、"と"で区切られている場合）
+        import re
+        section_titles = re.split(r',\s*|\s+and\s+|\s+と\s+', section_title)
+        section_titles = [t.strip() for t in section_titles if t.strip()]
+
+        if len(section_titles) == 0:
+            raise AgentValidationError("有効なセクションタイトルが見つかりません")
+
         try:
-            logger.info(f"[WriterAgent] ドラフト生成開始: '{section_title}'")
-            
-            # コンテキストから論文情報を取得
-            paper_context = ""
-            if context and "outline" in context:
-                outline_result = context["outline"]
-                if "section_metadata" in outline_result:
-                    metadata = outline_result["section_metadata"]
-                    paper_context += f"セクション番号: {metadata.get('section_number')}\n"
-                    paper_context += f"階層: {metadata.get('hierarchy_path')}\n"
-            
-            # プロンプト構築
-            prompt = f"""学術論文の以下のセクションの高品質なコンテンツを生成してください。
+            results = []
+            all_section_ids = []
+            total_word_count = 0
+            total_char_count = 0
+
+            # 各セクションを処理
+            for single_title in section_titles:
+                logger.info(f"[WriterAgent] ドラフト生成開始: '{single_title}'")
+
+                # コンテキストから論文情報を取得
+                paper_context = ""
+                if context and "outline" in context:
+                    outline_result = context["outline"]
+                    if "section_metadata" in outline_result:
+                        metadata = outline_result["section_metadata"]
+                        paper_context += f"セクション番号: {metadata.get('section_number')}\n"
+                        paper_context += f"階層: {metadata.get('hierarchy_path')}\n"
+
+                # プロンプト構築
+                prompt = f"""学術論文の以下のセクションの高品質なコンテンツを生成してください。
 
 【セクション情報】
-タイトル: {section_title}
+タイトル: {single_title}
 {paper_context}
 
 【要件】
@@ -260,30 +355,90 @@ class WriterAgent(BaseAgent):
 - 必要に応じて具体例や分析を含める
 
 【セクション内容】"""
-            
-            result = await openai_client.generate_text(
-                prompt=prompt,
-                model="gpt-4o-mini"
-            )
-            draft_content = result.get("content", "")
-            
-            if not draft_content:
-                raise AgentExecutionError("コンテンツ生成結果が空です")
-            
-            logger.info(f"[WriterAgent] ドラフト生成完了: {len(draft_content.split())}語")
-            
-            # Clear Boundaries Pattern: WriterAgentはコンテンツのみ返す
-            return {
-                "draft_content": draft_content,
-                "content": draft_content,  # 後方互換性
-                "section_title": section_title,
-                "word_count": len(draft_content.split()),
-                "character_count": len(draft_content),
-                "action": "generate_draft",
-                "success": True,
-                "message": f"セクション「{section_title}」のコンテンツを生成しました"
-            }
-            
+
+                result = await openai_client.generate_text(
+                    prompt=prompt,
+                    model="gpt-4o-mini"
+                )
+                draft_content = result.get("content", "")
+
+                if not draft_content:
+                    raise AgentExecutionError(f"コンテンツ生成結果が空です: '{single_title}'")
+
+                logger.info(f"[WriterAgent] ドラフト生成完了: '{single_title}' ({len(draft_content)}文字, {len(draft_content.split())}語)")
+
+                # DBに保存（repositoryが利用可能な場合）
+                section_id = None
+                if self.repository and paper_id:
+                    try:
+                        # 該当セクションを検索
+                        sections = await self.repository.get_sections_by_paper(paper_id)
+                        target_section = None
+                        for section in sections:
+                            if section.title == single_title:
+                                target_section = section
+                                break
+
+                        if target_section:
+                            # word_countも一緒に更新
+                            word_count = len(draft_content.split())
+                            await self.repository.update_section(
+                                section_id=target_section.id,
+                                update_data={
+                                    "content": draft_content,
+                                    "word_count": word_count
+                                }
+                            )
+                            section_id = target_section.id
+                            logger.info(f"[WriterAgent] セクション更新完了: ID={section_id}, title='{single_title}', word_count={word_count}")
+                        else:
+                            logger.warning(f"[WriterAgent] セクションが見つかりません: title='{single_title}', paper_id={paper_id}")
+                    except Exception as db_error:
+                        logger.error(f"[WriterAgent] DB保存エラー: {db_error}")
+                        # DB保存失敗してもコンテンツ生成は成功として返す
+
+                word_count = len(draft_content.split())
+                char_count = len(draft_content)
+                total_word_count += word_count
+                total_char_count += char_count
+
+                results.append({
+                    "title": single_title,
+                    "draft_content": draft_content,
+                    "content": draft_content,  # 後方互換性
+                    "section_id": section_id,
+                    "word_count": word_count,
+                    "character_count": char_count
+                })
+
+                if section_id:
+                    all_section_ids.append(section_id)
+
+            # 複数セクションの場合は統合結果を返す
+            if len(results) == 1:
+                return {
+                    "draft_content": results[0]["draft_content"],
+                    "content": results[0]["content"],
+                    "section_id": results[0]["section_id"],
+                    "section_title": results[0]["title"],
+                    "word_count": results[0]["word_count"],
+                    "character_count": results[0]["character_count"],
+                    "action": "generate_draft",
+                    "success": True,
+                    "message": f"セクション「{results[0]['title']}」のコンテンツを生成しました"
+                }
+            else:
+                return {
+                    "results": results,
+                    "section_ids": all_section_ids,
+                    "total_sections": len(results),
+                    "total_word_count": total_word_count,
+                    "total_character_count": total_char_count,
+                    "action": "generate_draft",
+                    "success": True,
+                    "message": f"{len(results)}個のセクションのコンテンツを生成しました"
+                }
+
         except Exception as e:
             logger.error(f"[WriterAgent] ドラフト生成エラー: {e}")
             raise AgentExecutionError(f"ドラフト生成に失敗しました: {e}")
