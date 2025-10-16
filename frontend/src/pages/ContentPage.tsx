@@ -6,7 +6,6 @@ import {
   FileOutput,
 } from 'lucide-react';
 import CategoryPage from '../components/Common/CategoryPage';
-import { WorkflowStep } from '../components/Common/WorkflowBar';
 
 // 既存のページコンポーネントをインポート
 import Templates from './Templates';
@@ -26,25 +25,6 @@ const ContentPage: React.FC = () => {
     setCurrentTab(tabId);
     navigate(`/content/${tabId}`);
   };
-
-  // ワークフローステップの定義（双方向）
-  const workflowSteps: WorkflowStep[] = [
-    {
-      number: 1,
-      icon: FileText,
-      label: 'テンプレート',
-      description: 'テンプレート作成',
-      status: currentTab === 'templates' ? 'current' :
-              currentTab === 'outputs' ? 'completed' : 'pending',
-    },
-    {
-      number: 2,
-      icon: FileOutput,
-      label: 'アウトプット',
-      description: '生成結果',
-      status: currentTab === 'outputs' ? 'current' : 'pending',
-    },
-  ];
 
   // タブの定義
   const tabs = [
@@ -69,8 +49,6 @@ const ContentPage: React.FC = () => {
       title="コンテンツ生成"
       titleIcon={Sparkles}
       description="テンプレートを作成して、AIで高品質なコンテンツを生成します"
-      workflowSteps={workflowSteps}
-      bidirectional={true}
       tabs={tabs}
       currentTab={currentTab}
       onTabChange={handleTabChange}

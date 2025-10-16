@@ -5,10 +5,8 @@ import {
   File,
   Search,
   MessageSquare,
-  Settings as SettingsIcon,
 } from 'lucide-react';
 import CategoryPage from '../components/Common/CategoryPage';
-import { WorkflowStep } from '../components/Common/WorkflowBar';
 
 // 既存のページコンポーネントをインポート
 import FilesPage from './Files';
@@ -30,41 +28,6 @@ const KnowledgePage: React.FC = () => {
     setCurrentTab(tabId);
     navigate(`/knowledge/${tabId}`);
   };
-
-  // ワークフローステップの定義
-  const workflowSteps: WorkflowStep[] = [
-    {
-      number: 1,
-      icon: File,
-      label: 'ファイル',
-      description: 'アップロード',
-      status: currentTab === 'files' ? 'current' :
-              ['vectordb', 'search', 'chat'].includes(currentTab) ? 'completed' : 'pending',
-    },
-    {
-      number: 2,
-      icon: SettingsIcon,
-      label: '管理',
-      description: '確認',
-      status: currentTab === 'vectordb' ? 'current' :
-              ['search', 'chat'].includes(currentTab) ? 'completed' : 'pending',
-    },
-    {
-      number: 3,
-      icon: Search,
-      label: '検索',
-      description: '探索',
-      status: currentTab === 'search' ? 'current' :
-              currentTab === 'chat' ? 'completed' : 'pending',
-    },
-    {
-      number: 4,
-      icon: MessageSquare,
-      label: 'Chat',
-      description: '活用',
-      status: currentTab === 'chat' ? 'current' : 'pending',
-    },
-  ];
 
   // タブの定義
   const tabs = [
@@ -103,7 +66,6 @@ const KnowledgePage: React.FC = () => {
       title="ナレッジベース"
       titleIcon={Database}
       description="データをアップロードして、AIで活用するまでのワークフロー"
-      workflowSteps={workflowSteps}
       tabs={tabs}
       currentTab={currentTab}
       onTabChange={handleTabChange}

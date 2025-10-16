@@ -6,7 +6,6 @@ import {
   Bot,
 } from 'lucide-react';
 import CategoryPage from '../components/Common/CategoryPage';
-import { WorkflowStep } from '../components/Common/WorkflowBar';
 
 // 既存のページコンポーネントをインポート
 import Papers from './Papers';
@@ -26,25 +25,6 @@ const ResearchPage: React.FC = () => {
     setCurrentTab(tabId);
     navigate(`/research/${tabId}`);
   };
-
-  // ワークフローステップの定義（双方向）
-  const workflowSteps: WorkflowStep[] = [
-    {
-      number: 1,
-      icon: Bot,
-      label: 'エージェント',
-      description: 'エージェント設定',
-      status: currentTab === 'agents' ? 'current' :
-              currentTab === 'papers' ? 'completed' : 'pending',
-    },
-    {
-      number: 2,
-      icon: PenTool,
-      label: '論文執筆',
-      description: '論文作成',
-      status: currentTab === 'papers' ? 'current' : 'pending',
-    },
-  ];
 
   // タブの定義
   const tabs = [
@@ -69,8 +49,6 @@ const ResearchPage: React.FC = () => {
       title="論文・AI"
       titleIcon={GraduationCap}
       description="AIエージェントを活用して、学術論文を効率的に執筆します"
-      workflowSteps={workflowSteps}
-      bidirectional={true}
       tabs={tabs}
       currentTab={currentTab}
       onTabChange={handleTabChange}
