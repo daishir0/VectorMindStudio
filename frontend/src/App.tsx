@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
 
@@ -32,6 +32,12 @@ import ChatSession from './pages/ChatSession';
 import LangGraphAgentsPage from './pages/LangGraphAgentsPage';
 import LangGraphAgentDetailPage from './pages/LangGraphAgentDetailPage';
 
+// 新しい統合ページ
+import KnowledgePage from './pages/KnowledgePage';
+import ContentPage from './pages/ContentPage';
+import ResearchPage from './pages/ResearchPage';
+import SettingsPageWrapper from './pages/SettingsPageWrapper';
+
 import { AuthProvider } from './contexts/AuthContext';
 import { ProtectedRoute } from './components/Auth/ProtectedRoute';
 
@@ -60,30 +66,54 @@ function App() {
               {/* プロテクトされたルート */}
               <Route element={<ProtectedRoute />}>
                 <Route element={<Layout />}>
+                  {/* ホーム */}
                   <Route path="/" element={<Home />} />
-                  <Route path="/dashboard" element={<Dashboard />} />
-                  <Route path="/templates" element={<Templates />} />
+
+                  {/* ナレッジベース統合ページ */}
+                  <Route path="/knowledge" element={<Navigate to="/knowledge/files" replace />} />
+                  <Route path="/knowledge/:tab" element={<KnowledgePage />} />
+
+                  {/* コンテンツ生成統合ページ */}
+                  <Route path="/content" element={<Navigate to="/content/templates" replace />} />
+                  <Route path="/content/:tab" element={<ContentPage />} />
+                  {/* テンプレート詳細ページ（個別ルート） */}
                   <Route path="/templates/:id" element={<TemplateDetail />} />
                   <Route path="/templates/:id/edit" element={<EditTemplate />} />
                   <Route path="/templates/create" element={<CreateTemplate />} />
-                  <Route path="/upload" element={<UploadPage />} />
-                  <Route path="/files" element={<FilesPage />} />
-                  <Route path="/vectordb" element={<VectorDBPage />} />
-                  <Route path="/chat" element={<ChatPage />} />
-                  <Route path="/search" element={<SearchPage />} />
-                  <Route path="/outputs" element={<OutputsPage />} />
+                  {/* アウトプット詳細ページ（個別ルート） */}
                   <Route path="/outputs/:id" element={<OutputDetailPage />} />
-                  <Route path="/papers" element={<Papers />} />
-                  <Route path="/papers/create" element={<CreatePaper />} />
+
+                  {/* 論文・AI統合ページ */}
+                  <Route path="/research" element={<Navigate to="/research/agents" replace />} />
+                  <Route path="/research/:tab" element={<ResearchPage />} />
+                  {/* 論文詳細ページ（個別ルート） */}
                   <Route path="/papers/:id" element={<PaperDetail />} />
                   <Route path="/papers/:id/edit" element={<EditPaper />} />
+                  <Route path="/papers/create" element={<CreatePaper />} />
                   <Route path="/papers/:id/chat/create" element={<CreateChatSession />} />
                   <Route path="/papers/:id/chat/:sessionId" element={<ChatSession />} />
-                  <Route path="/langgraph-agents" element={<LangGraphAgentsPage />} />
+                  {/* エージェント詳細ページ（個別ルート） */}
                   <Route path="/langgraph-agents/:agentId" element={<LangGraphAgentDetailPage />} />
-                  <Route path="/profile" element={<Profile />} />
-                  <Route path="/settings" element={<Settings />} />
-                  <Route path="/help" element={<Help />} />
+
+                  {/* 設定統合ページ */}
+                  <Route path="/settings" element={<Navigate to="/settings/profile" replace />} />
+                  <Route path="/settings/:tab" element={<SettingsPageWrapper />} />
+
+                  {/* 旧URLから新URLへのリダイレクト */}
+                  <Route path="/dashboard" element={<Navigate to="/" replace />} />
+                  <Route path="/files" element={<Navigate to="/knowledge/files" replace />} />
+                  <Route path="/vectordb" element={<Navigate to="/knowledge/vectordb" replace />} />
+                  <Route path="/search" element={<Navigate to="/knowledge/search" replace />} />
+                  <Route path="/chat" element={<Navigate to="/knowledge/chat" replace />} />
+                  <Route path="/templates" element={<Navigate to="/content/templates" replace />} />
+                  <Route path="/outputs" element={<Navigate to="/content/outputs" replace />} />
+                  <Route path="/papers" element={<Navigate to="/research/papers" replace />} />
+                  <Route path="/langgraph-agents" element={<Navigate to="/research/agents" replace />} />
+                  <Route path="/profile" element={<Navigate to="/settings/profile" replace />} />
+                  <Route path="/help" element={<Navigate to="/settings/help" replace />} />
+
+                  {/* 旧アップロードページ */}
+                  <Route path="/upload" element={<UploadPage />} />
                 </Route>
               </Route>
               
