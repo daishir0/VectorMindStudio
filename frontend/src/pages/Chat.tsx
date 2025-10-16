@@ -167,7 +167,7 @@ const ChatPage: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-full bg-gray-50">
       {/* サイドバー - チャット履歴 */}
       <div className="w-64 bg-white border-r border-gray-200 flex flex-col">
         <div className="p-4 border-b border-gray-200">
@@ -243,7 +243,7 @@ const ChatPage: React.FC = () => {
         {/* メッセージエリア */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-center">
+            <div className="flex flex-col items-center justify-center text-center py-16">
               <Bot className="h-16 w-16 text-gray-300 mb-4" />
               <h2 className="text-lg font-medium text-gray-900 mb-2">
                 VectorDBチャットへようこそ

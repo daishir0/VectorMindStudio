@@ -98,7 +98,10 @@ const CategoryPage: React.FC<CategoryPageProps> = ({
       )}
 
       {/* コンテンツエリア */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div className={`
+        bg-white rounded-lg shadow-sm border border-gray-200
+        ${currentTab === 'chat' ? 'p-0 h-[calc(100vh-280px)] overflow-hidden' : 'p-6'}
+      `}>
         {currentTabData && <currentTabData.component />}
       </div>
     </div>
